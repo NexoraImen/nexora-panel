@@ -1,0 +1,55 @@
+Nexora Community License 1.0
+
+Copyright (c) 2026 Nexora
+
+1. Grant
+
+   You may use, copy and modify this software (the "Software") to run your own
+   services, including commercial ones such as selling subscriptions to your
+   own customers. You may share unmodified copies free of charge, as long as
+   this license travels with them.
+
+2. Limits
+
+   You may not:
+
+   a. sell, rent or sublicense the Software, or a modified version of it, as a
+      product — including offering it to others as a hosted panel;
+   b. remove, disable or work around the license checks that control the Pro
+      features, or distribute anything that does;
+   c. remove or change the copyright notices.
+
+3. Pro features
+
+   Features marked "Pro" are not licensed under this text. They require a paid
+   license from Nexora, bound to one server, and their code is not part of this
+   repository.
+
+   A Pro license key belongs to the person who bought it. It may not be
+   shared, resold, or used on more than one server at a time.
+
+4. Name
+
+   This license gives no right to use the Nexora name or logo, except to say
+   truthfully that your service runs on Nexora. A modified version must not be
+   presented as Nexora.
+
+5. Contributions
+
+   By submitting a contribution you license it to Nexora under these terms and
+   allow Nexora to use it in any edition of the Software.
+
+6. Termination
+
+   If you break these terms, your rights end. They come back if you stop within
+   30 days of being notified, the first time only.
+
+7. No warranty
+
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+   IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+   FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+   AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+   LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+   OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+   SOFTWARE.

@@ -1,0 +1,140 @@
+{
+  "downloadApps": {
+    "android": [
+      {
+        "id": "happ",
+        "name": "Happ",
+        "url": "https://github.com/Happ-proxy/happ-android/releases/download/3.26.3/Happ.apk",
+        "recommended": true,
+        "scheme": "happ"
+      },
+      {
+        "id": "v2rayng",
+        "name": "v2rayNG",
+        "url": "https://github.com/2dust/v2rayNG/releases/download/2.2.6/v2rayNG_2.2.6_arm64-v8a.apk",
+        "recommended": false,
+        "scheme": "v2rayng"
+      }
+    ],
+    "ios": [
+      {
+        "id": "happ",
+        "name": "Happ",
+        "url": "https://apps.apple.com/us/app/happ-proxy-utility/id6504287215",
+        "recommended": true,
+        "icon": "bolt",
+        "scheme": "happ"
+      },
+      {
+        "id": "v2box",
+        "name": "V2Box",
+        "url": "https://apps.apple.com/us/app/v2box-v2ray-client/id6446814690",
+        "recommended": false,
+        "icon": "shield-halved",
+        "scheme": "v2box"
+      }
+    ],
+    "desktop": [
+      {
+        "id": "happ",
+        "name": "Happ (Windows)",
+        "url": "https://github.com/Happ-proxy/happ-desktop/releases/download/3.3.6/setup-Happ.x64.exe",
+        "recommended": true,
+        "icon": "bolt",
+        "scheme": "happ"
+      },
+      {
+        "id": "v2rayn",
+        "name": "v2rayN (Windows)",
+        "url": "https://github.com/2dust/v2rayN/releases/download/7.24.1/v2rayN-windows-arm64.zip",
+        "recommended": false,
+        "icon": "box-open",
+        "scheme": "none"
+      }
+    ]
+  },
+  "faq": {
+    "fa": [
+      {
+        "q": "چرا نمی‌توانم وصل شوم؟",
+        "a": "اول مطمئن شوید آخرین نسخه‌ی اپ پیشنهادی (Happ) را نصب کرده‌اید و کانفیگ را درست وارد کرده‌اید."
+      },
+      {
+        "q": "چطور اشتراکم را تمدید کنم؟",
+        "a": "روی دکمه‌ی «تمدید ساب» در داشبورد بزنید یا مستقیم به پشتیبانی پیام دهید."
+      }
+    ],
+    "en": [
+      {
+        "q": "Why can't I connect?",
+        "a": "Make sure you've installed the latest version of our recommended app (Happ)."
+      }
+    ],
+    "tr": [],
+    "ar": []
+  },
+  "banners": {
+    "enabled": true,
+    "lowQuotaDaysThreshold": 3,
+    "lowQuotaPercentThreshold": 15,
+    "disabledTitle": "",
+    "disabledDesc": "",
+    "disabledButtonText": "",
+    "lowQuotaTitle": "",
+    "lowQuotaDescDays": "",
+    "lowQuotaDescVolume": "",
+    "lowQuotaButtonText": "",
+    "lowQuotaButtonUrl": ""
+  },
+  "referral": {
+    "enabled": true
+  },
+  "links": {
+    "supportUsername": "",
+    "channelUsername": ""
+  },
+  "videoTutorialUrl": null,
+  "videos": [],
+  "advanced": {
+    "brandName": "NEXORA",
+    "pageTitle": "Nexora | مدیریت اشتراک",
+    "accentColor": "#2B7FD6",
+    "accentColor2": "#5AA9E6",
+    "defaultLanguage": "fa",
+    "defaultTheme": "dark",
+    "showNotificationPopup": true,
+    "notificationDelaySeconds": 10,
+    "showBrandStrip": true,
+    "showReferralCard": true,
+    "showFaqSection": true,
+    "customCss": "",
+    "customFooterText": "",
+    "allowThemeToggle": true,
+    "allowLanguageToggle": true,
+    "hideConfigsList": false
+  },
+  "bot": {
+    "enabled": false,
+    "token": "",
+    "adminChatId": "",
+    "welcomeMessage": "سلام! به ربات Nexora خوش آمدید 👋",
+    "notifyOnPurchase": true,
+    "notifyOnExpiry": true,
+    "expiryReminderDays": 3
+  },
+  "popup": {
+    "enabled": true,
+    "delaySeconds": 10,
+    "icon": "🔔",
+    "title": "آیا مشکلی در اتصال کانفیگ دارید؟",
+    "description": "پیشنهاد می‌کنیم از برنامه‌ی Happ استفاده کنید؛ در غیر این صورت به پشتیبانی پیام بدهید",
+    "primaryButtonText": "پشتیبانی",
+    "primaryButtonUrl": "",
+    "dismissButtonText": "خیر",
+    "autoCloseSeconds": 15
+  },
+  "resellers": [],
+  "template": "classic",
+  "palette": "ocean",
+  "customPalettes": []
+}

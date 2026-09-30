@@ -1,0 +1,21 @@
+# اسکریپت‌های شل روی سرور لینوکس اجرا می‌شوند. اگر یک‌بار با پایان
+# خط ویندوزی commit شوند، روی سرور با «bad interpreter: /bin/bash^M»
+# می‌خوابند — پس همیشه LF نگه داشته می‌شوند.
+*.sh text eol=lf
+*.py text eol=lf
+*.cjs text eol=lf
+*.js text eol=lf
+*.jsx text eol=lf
+*.json text eol=lf
+*.css text eol=lf
+*.md text eol=lf
+VERSION text eol=lf
+# Copied to the issuer server as is; a  in ExecStart breaks the unit.
+*.service text eol=lf
+*.txt text eol=lf
+
+*.ttf binary
+*.woff binary
+*.woff2 binary
+*.png binary
+*.jpg binary

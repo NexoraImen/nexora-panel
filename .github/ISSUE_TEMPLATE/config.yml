@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Support and questions
+    url: https://t.me/crm_nexoravpn
+    about: Install or setup questions get a faster answer here than in an issue
+  - name: Nexora channel
+    url: https://t.me/yanexoravpn
+    about: New releases and changes
+  - name: Security problem
+    url: https://github.com/NexoraImen/nexora-panel/security/advisories/new
+    about: Do not report security problems publicly - use this private form

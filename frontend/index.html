@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Nexora | مدیریت صفحه اشتراک</title>
+    <!-- هیچ فونتی از بیرون نمی‌آید.
+
+         JetBrains Mono از گوگل می‌آمد و در ایران بالا نمی‌آید. چون
+         غیرمسدودکننده بود خرابی دیده نمی‌شد — ولی نتیجه‌اش این بود
+         که پنل با VPN یک شکل داشت و بی‌VPN شکلی دیگر، و هیچ‌کدام
+         «درست» نبود. از این بدتر: آن قلم اصلاً گلیفِ فارسی ندارد،
+         پس روی «۱۲۳» هر بار به قلمِ پشتیبان می‌افتاد؛ یعنی هزینه‌ی
+         یک درخواستِ بلاک‌شونده را می‌دادیم بدون اینکه عددهای فارسی
+         حتی از آن استفاده کنند.
+
+         حالا --mono در index.css فقط قلم‌های موجود روی خودِ سیستم را
+         نام می‌برد. -->
+    <!-- پلِ مینی‌اپ تلگرام — فقط روی /app، و نه در پیش‌نمایشِ پرتال.
+
+         قبلاً برای هر چهار اپ، هم‌زمان (sync) و در <head> بار می‌شد.
+         «اسکریپت کوچک است» درست بود، ولی telegram.org بدونِ VPN در
+         ایران فیلتر است: پنلِ مدیر و پنلِ نماینده تا وقتی این درخواست
+         به timeout نمی‌رسید اصلاً رندر نمی‌شدند — صفحه‌ی سفیدِ چند ده
+         ثانیه‌ای، و پیش‌نمایشِ استودیوی پوسته (`/app?preview=1`) هم.
+         مینی‌اپِ واقعی همیشه داخلِ تلگرام باز می‌شود، که به آن دسترسی
+         دارد؛ پس فقط همان‌جا لازم است. document.write یعنی هنوز پیش از
+         main.jsx اجرا می‌شود، همان‌طور که مینی‌اپ انتظار دارد. -->
+    <script>
+      (function () {
+        var onApp = /^\/app(\/|$)/.test(location.pathname)
+          && !/[?&]preview=1(&|$)/.test(location.search);
+        if (onApp || window.NX_FORCE_TG_SDK) {
+          document.write('<script src="https://telegram.org/js/telegram-web-app.js"><\/script>');
+        }
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>

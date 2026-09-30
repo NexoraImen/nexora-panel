@@ -1,0 +1,198 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 420" width="760" height="420" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#0B1220"/>
+      <stop offset="100%" stop-color="#06090F"/>
+    </linearGradient>
+    <linearGradient id="brand" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#5AA9E6"/>
+      <stop offset="100%" stop-color="#2B7FD6"/>
+    </linearGradient>
+    <linearGradient id="card" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#141F31"/>
+      <stop offset="100%" stop-color="#0E1523"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#E8C766"/>
+      <stop offset="100%" stop-color="#D4AF37"/>
+    </linearGradient>
+    <linearGradient id="violet" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#C084FC"/>
+      <stop offset="100%" stop-color="#8B5CF6"/>
+    </linearGradient>
+    <linearGradient id="forest" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#34D399"/>
+      <stop offset="100%" stop-color="#10B981"/>
+    </linearGradient>
+    <filter id="soft" x="-40%" y="-40%" width="180%" height="180%">
+      <feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#000" flood-opacity=".55"/>
+    </filter>
+    <filter id="glow" x="-60%" y="-60%" width="220%" height="220%">
+      <feDropShadow dx="0" dy="3" stdDeviation="7" flood-color="#2B7FD6" flood-opacity=".7"/>
+    </filter>
+  </defs>
+
+  <rect width="760" height="420" fill="url(#bg)"/>
+  <ellipse cx="380" cy="0" rx="380" ry="150" fill="#2B7FD6" opacity=".07"/>
+
+  <!-- ═══ گوشی اصلی ═══ -->
+  <g transform="translate(46,32)">
+    <rect x="0" y="0" width="230" height="356" rx="26" fill="#1A2333" stroke="rgba(255,255,255,.13)"/>
+    <rect x="7" y="7" width="216" height="342" rx="20" fill="#06090F"/>
+
+    <!-- برند -->
+    <g transform="translate(22,26)">
+      <rect width="22" height="22" rx="7" fill="url(#brand)"/>
+      <text x="11" y="15.5" font-size="12" font-weight="800" fill="#06090F" text-anchor="middle">N</text>
+      <text x="30" y="15.5" font-size="11" font-weight="700" fill="#EDF2F9" letter-spacing="1.2">NEXORA</text>
+    </g>
+
+    <!-- کارت اشتراک -->
+    <g transform="translate(20,58)">
+      <rect width="190" height="94" rx="16" fill="url(#card)" stroke="rgba(90,169,230,.16)" filter="url(#soft)"/>
+
+      <!-- حلقه مصرف -->
+      <g transform="translate(20,17)">
+        <circle cx="30" cy="30" r="26" fill="none" stroke="rgba(0,0,0,.5)" stroke-width="7"/>
+        <circle cx="30" cy="30" r="26" fill="none" stroke="url(#brand)" stroke-width="6.5"
+                stroke-linecap="round" stroke-dasharray="163" stroke-dashoffset="50"
+                transform="rotate(-90 30 30)" filter="url(#glow)"/>
+        <text x="30" y="28" font-size="13" font-weight="700" fill="#EDF2F9" text-anchor="middle">69%</text>
+        <text x="30" y="39" font-size="6.5" fill="#5A6880" text-anchor="middle">مصرف</text>
+      </g>
+
+      <text x="88" y="30" font-size="9.5" font-weight="700" fill="#EDF2F9">ali_nexora</text>
+      <text x="88" y="47" font-size="7.5" fill="#5A6880">باقیمانده</text>
+      <text x="178" y="47" font-size="8.5" font-weight="600" fill="#8A98AC" text-anchor="end">18.8 GB</text>
+      <text x="88" y="62" font-size="7.5" fill="#5A6880">انقضا</text>
+      <text x="178" y="62" font-size="8.5" font-weight="600" fill="#8A98AC" text-anchor="end">17 روز</text>
+      <text x="88" y="77" font-size="7.5" fill="#5A6880">دستگاه</text>
+      <text x="178" y="77" font-size="8.5" font-weight="600" fill="#34D399" text-anchor="end">2 / 3</text>
+    </g>
+
+    <!-- دکمه‌ها -->
+    <g transform="translate(20,162)">
+      <rect width="59" height="40" rx="12" fill="url(#brand)"/>
+      <text x="29.5" y="18" font-size="12" fill="#06090F" text-anchor="middle">⚡</text>
+      <text x="29.5" y="31" font-size="7" font-weight="700" fill="#06090F" text-anchor="middle">افزودن</text>
+
+      <rect x="65.5" width="59" height="40" rx="12" fill="#131C2E" stroke="rgba(255,255,255,.08)"/>
+      <text x="95" y="18" font-size="11" fill="#8A98AC" text-anchor="middle">⧉</text>
+      <text x="95" y="31" font-size="7" font-weight="600" fill="#8A98AC" text-anchor="middle">کپی</text>
+
+      <rect x="131" width="59" height="40" rx="12" fill="#131C2E" stroke="rgba(255,255,255,.08)"/>
+      <text x="160.5" y="18" font-size="11" fill="#8A98AC" text-anchor="middle">▣</text>
+      <text x="160.5" y="31" font-size="7" font-weight="600" fill="#8A98AC" text-anchor="middle">QR</text>
+    </g>
+
+    <!-- ویدیوها -->
+    <text x="210" y="222" font-size="8.5" font-weight="700" fill="#EDF2F9" text-anchor="end">ویدیوهای آموزشی</text>
+    <g transform="translate(20,230)">
+      <rect width="190" height="36" rx="13" fill="url(#card)" stroke="rgba(255,255,255,.05)"/>
+      <rect x="152" y="9" width="26" height="18" rx="7" fill="rgba(43,127,214,.22)"/>
+      <text x="165" y="22" font-size="9" fill="#5AA9E6" text-anchor="middle">▶</text>
+      <text x="143" y="17" font-size="7.5" font-weight="600" fill="#EDF2F9" text-anchor="end">آموزش نصب در اندروید</text>
+      <text x="143" y="28" font-size="6.5" fill="#5A6880" text-anchor="end">اندروید</text>
+    </g>
+    <g transform="translate(20,272)">
+      <rect width="190" height="36" rx="13" fill="url(#card)" stroke="rgba(255,255,255,.05)"/>
+      <rect x="152" y="9" width="26" height="18" rx="7" fill="rgba(43,127,214,.22)"/>
+      <text x="165" y="22" font-size="9" fill="#5AA9E6" text-anchor="middle">▶</text>
+      <text x="143" y="17" font-size="7.5" font-weight="600" fill="#EDF2F9" text-anchor="end">رفع مشکل اتصال</text>
+      <text x="143" y="28" font-size="6.5" fill="#5A6880" text-anchor="end">همه دستگاه‌ها</text>
+    </g>
+  </g>
+
+  <!-- ═══ سه پالت دیگر ═══ -->
+  <g transform="translate(310,52)">
+    <text x="0" y="0" font-size="11" font-weight="700" fill="#EDF2F9">۳۲ ترکیب ظاهری</text>
+    <text x="0" y="17" font-size="8.5" fill="#5A6880">۴ ساختار × ۸ طیف رنگی — همه‌چیز با پالت هماهنگ می‌شود</text>
+  </g>
+
+  <!-- Gold -->
+  <g transform="translate(310,84)">
+    <rect width="130" height="150" rx="16" fill="url(#card)" stroke="rgba(212,175,55,.22)" filter="url(#soft)"/>
+    <g transform="translate(14,14)">
+      <rect width="16" height="16" rx="5" fill="url(#gold)"/>
+      <text x="8" y="11.5" font-size="9" font-weight="800" fill="#0C0A07" text-anchor="middle">N</text>
+      <text x="22" y="11.5" font-size="8" font-weight="700" fill="#EDF2F9" letter-spacing=".8">NEXORA</text>
+    </g>
+    <g transform="translate(38,42)">
+      <circle cx="27" cy="27" r="23" fill="none" stroke="rgba(0,0,0,.5)" stroke-width="6"/>
+      <circle cx="27" cy="27" r="23" fill="none" stroke="url(#gold)" stroke-width="5.5"
+              stroke-linecap="round" stroke-dasharray="145" stroke-dashoffset="38"
+              transform="rotate(-90 27 27)"/>
+      <text x="27" y="30" font-size="11" font-weight="700" fill="#EDF2F9" text-anchor="middle">74%</text>
+    </g>
+    <rect x="14" y="106" width="46" height="26" rx="9" fill="url(#gold)"/>
+    <rect x="66" y="106" width="22" height="26" rx="9" fill="#131C2E"/>
+    <rect x="94" y="106" width="22" height="26" rx="9" fill="#131C2E"/>
+    <text x="65" y="145" font-size="7.5" fill="#D4AF37" text-anchor="middle">Gold</text>
+  </g>
+
+  <!-- Violet -->
+  <g transform="translate(452,84)">
+    <rect width="130" height="150" rx="16" fill="url(#card)" stroke="rgba(139,92,246,.22)" filter="url(#soft)"/>
+    <g transform="translate(14,14)">
+      <rect width="16" height="16" rx="5" fill="url(#violet)"/>
+      <text x="8" y="11.5" font-size="9" font-weight="800" fill="#0A0713" text-anchor="middle">N</text>
+      <text x="22" y="11.5" font-size="8" font-weight="700" fill="#EDF2F9" letter-spacing=".8">NEXORA</text>
+    </g>
+    <g transform="translate(38,42)">
+      <circle cx="27" cy="27" r="23" fill="none" stroke="rgba(0,0,0,.5)" stroke-width="6"/>
+      <circle cx="27" cy="27" r="23" fill="none" stroke="url(#violet)" stroke-width="5.5"
+              stroke-linecap="round" stroke-dasharray="145" stroke-dashoffset="62"
+              transform="rotate(-90 27 27)"/>
+      <text x="27" y="30" font-size="11" font-weight="700" fill="#EDF2F9" text-anchor="middle">57%</text>
+    </g>
+    <rect x="14" y="106" width="46" height="26" rx="9" fill="url(#violet)"/>
+    <rect x="66" y="106" width="22" height="26" rx="9" fill="#131C2E"/>
+    <rect x="94" y="106" width="22" height="26" rx="9" fill="#131C2E"/>
+    <text x="65" y="145" font-size="7.5" fill="#A78BFA" text-anchor="middle">Violet</text>
+  </g>
+
+  <!-- Forest -->
+  <g transform="translate(594,84)">
+    <rect width="130" height="150" rx="16" fill="url(#card)" stroke="rgba(16,185,129,.22)" filter="url(#soft)"/>
+    <g transform="translate(14,14)">
+      <rect width="16" height="16" rx="5" fill="url(#forest)"/>
+      <text x="8" y="11.5" font-size="9" font-weight="800" fill="#04100C" text-anchor="middle">N</text>
+      <text x="22" y="11.5" font-size="8" font-weight="700" fill="#EDF2F9" letter-spacing=".8">NEXORA</text>
+    </g>
+    <g transform="translate(38,42)">
+      <circle cx="27" cy="27" r="23" fill="none" stroke="rgba(0,0,0,.5)" stroke-width="6"/>
+      <circle cx="27" cy="27" r="23" fill="none" stroke="url(#forest)" stroke-width="5.5"
+              stroke-linecap="round" stroke-dasharray="145" stroke-dashoffset="22"
+              transform="rotate(-90 27 27)"/>
+      <text x="27" y="30" font-size="11" font-weight="700" fill="#EDF2F9" text-anchor="middle">85%</text>
+    </g>
+    <rect x="14" y="106" width="46" height="26" rx="9" fill="url(#forest)"/>
+    <rect x="66" y="106" width="22" height="26" rx="9" fill="#131C2E"/>
+    <rect x="94" y="106" width="22" height="26" rx="9" fill="#131C2E"/>
+    <text x="65" y="145" font-size="7.5" fill="#34D399" text-anchor="middle">Forest</text>
+  </g>
+
+  <!-- ═══ نکات ═══ -->
+  <g transform="translate(310,258)">
+    <rect width="414" height="118" rx="16" fill="rgba(255,255,255,.02)" stroke="rgba(255,255,255,.06)"/>
+
+    <g transform="translate(20,26)">
+      <circle cx="4" cy="-3" r="3" fill="#5AA9E6"/>
+      <text x="16" y="0" font-size="9" fill="#8A98AC">افزودن یک‌ضربه به Happ و v2rayNG و V2Box</text>
+    </g>
+    <g transform="translate(20,50)">
+      <circle cx="4" cy="-3" r="3" fill="#34D399"/>
+      <text x="16" y="0" font-size="9" fill="#8A98AC">حلقه از صفر پر می‌شود و عدد همراهش بالا می‌رود</text>
+    </g>
+    <g transform="translate(20,74)">
+      <circle cx="4" cy="-3" r="3" fill="#FBBF24"/>
+      <text x="16" y="0" font-size="9" fill="#8A98AC">سوالات متداول به فارسی، انگلیسی، ترکی و عربی</text>
+    </g>
+    <g transform="translate(20,98)">
+      <circle cx="4" cy="-3" r="3" fill="#A78BFA"/>
+      <text x="16" y="0" font-size="9" fill="#8A98AC">هر واسطه برند و رنگ خودش را دارد</text>
+    </g>
+  </g>
+
+  <text x="380" y="404" font-size="8" fill="#3D4A5C" text-anchor="middle">nexora — صفحه‌ی اشتراک</text>
+</svg>

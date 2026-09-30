@@ -1,0 +1,34 @@
+name: Feature request
+description: Something Nexora does not do that would help you
+title: "[idea] "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does it solve
+      description: |
+        Not the solution itself - the thing that is hard today. The best features in
+        this panel started as exactly that sentence.
+      placeholder: |
+        When the server slows down I cannot tell which customer brings the most load,
+        and I have to dig through 3x-ui by hand.
+    validations:
+      required: true
+
+  - type: textarea
+    id: idea
+    attributes:
+      label: A solution, if you have one in mind
+      description: Optional
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Subscription page
+        - Telegram bot
+        - Admin panel
+        - Monitoring
+        - Other

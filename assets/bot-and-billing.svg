@@ -1,0 +1,195 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 420" width="760" height="420" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif">
+  <defs>
+    <linearGradient id="bg2" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#0B1220"/>
+      <stop offset="100%" stop-color="#06090F"/>
+    </linearGradient>
+    <linearGradient id="br" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#5AA9E6"/>
+      <stop offset="100%" stop-color="#2B7FD6"/>
+    </linearGradient>
+    <linearGradient id="cd" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#141F31"/>
+      <stop offset="100%" stop-color="#0E1523"/>
+    </linearGradient>
+    <linearGradient id="gld" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#E8C766"/>
+      <stop offset="100%" stop-color="#D4AF37"/>
+    </linearGradient>
+    <filter id="sf" x="-40%" y="-40%" width="180%" height="180%">
+      <feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#000" flood-opacity=".55"/>
+    </filter>
+  </defs>
+
+  <rect width="760" height="420" fill="url(#bg2)"/>
+  <ellipse cx="380" cy="0" rx="380" ry="150" fill="#2B7FD6" opacity=".06"/>
+
+  <!-- ═══════ ربات تلگرام ═══════ -->
+  <g transform="translate(40,28)">
+    <text x="0" y="0" font-size="11" font-weight="700" fill="#EDF2F9">ربات فروش</text>
+    <text x="0" y="16" font-size="8.5" fill="#5A6880">شبانه‌روز می‌فروشد — شما فقط تایید می‌کنید</text>
+  </g>
+
+  <g transform="translate(40,56)">
+    <rect width="230" height="336" rx="22" fill="#0E1621" stroke="rgba(255,255,255,.1)"/>
+
+    <!-- هدر -->
+    <rect x="0" y="0" width="230" height="34" rx="22" fill="#17212B"/>
+    <rect x="0" y="20" width="230" height="14" fill="#17212B"/>
+    <circle cx="20" cy="17" r="9" fill="url(#br)"/>
+    <text x="20" y="21" font-size="9" font-weight="800" fill="#06090F" text-anchor="middle">N</text>
+    <text x="36" y="15" font-size="8.5" font-weight="700" fill="#EDF2F9">Nexora VPN</text>
+    <text x="36" y="26" font-size="6.5" fill="#5AA9E6">آنلاین</text>
+
+    <!-- پیام ربات -->
+    <g transform="translate(12,44)">
+      <rect width="162" height="86" rx="11" fill="#182533"/>
+      <text x="150" y="17" font-size="8" font-weight="700" fill="#fff" text-anchor="end">سلام علی 👋</text>
+      <text x="150" y="34" font-size="7.5" fill="#E8EEF7" text-anchor="end">📦 اشتراک استاندارد</text>
+      <text x="150" y="48" font-size="7.5" fill="#34D399" text-anchor="end">✅ ۱۷ روز باقی مانده</text>
+      <text x="150" y="66" font-size="7.5" fill="#FBBF24" text-anchor="end">💎 ۴۵ سکه — ۲۰٪ تخفیف</text>
+      <text x="150" y="79" font-size="7.5" fill="#8A98AC" text-anchor="end">👛 ۱۲۰,۰۰۰ تومان</text>
+    </g>
+
+    <!-- دکمه‌های شیشه‌ای -->
+    <g transform="translate(12,136)">
+      <rect width="162" height="20" rx="7" fill="#1F2C3A" stroke="rgba(90,169,230,.25)"/>
+      <text x="81" y="13.5" font-size="7.5" font-weight="600" fill="#8FC1EE" text-anchor="middle">🛒 خرید اشتراک</text>
+
+      <rect y="24" width="79" height="20" rx="7" fill="#1F2C3A" stroke="rgba(90,169,230,.25)"/>
+      <text x="39.5" y="37.5" font-size="7" fill="#8FC1EE" text-anchor="middle">📊 اشتراک‌ها</text>
+      <rect x="83" y="24" width="79" height="20" rx="7" fill="#1F2C3A" stroke="rgba(90,169,230,.25)"/>
+      <text x="122.5" y="37.5" font-size="7" fill="#8FC1EE" text-anchor="middle">👛 کیف پول</text>
+
+      <rect y="48" width="79" height="20" rx="7" fill="#1F2C3A" stroke="rgba(90,169,230,.25)"/>
+      <text x="39.5" y="61.5" font-size="7" fill="#8FC1EE" text-anchor="middle">🎁 دعوت</text>
+      <rect x="83" y="48" width="79" height="20" rx="7" fill="#1F2C3A" stroke="rgba(90,169,230,.25)"/>
+      <text x="122.5" y="61.5" font-size="7" fill="#8FC1EE" text-anchor="middle">🪙 سکه‌ها</text>
+
+      <rect y="72" width="162" height="20" rx="7" fill="rgba(212,175,55,.14)" stroke="rgba(212,175,55,.35)"/>
+      <text x="81" y="85.5" font-size="7.5" font-weight="600" fill="#D4AF37" text-anchor="middle">⚙️ پنل مدیریت</text>
+    </g>
+
+    <!-- پیام کاربر -->
+    <g transform="translate(56,236)">
+      <rect width="162" height="30" rx="11" fill="#2B5278"/>
+      <text x="12" y="19" font-size="7.5" fill="#E8EEF7">🧾 رسید پرداخت ارسال شد</text>
+    </g>
+
+    <!-- تایید -->
+    <g transform="translate(12,272)">
+      <rect width="162" height="50" rx="11" fill="#182533"/>
+      <text x="150" y="17" font-size="7.5" font-weight="700" fill="#34D399" text-anchor="end">✅ رسید تایید شد</text>
+      <text x="150" y="32" font-size="7" fill="#8A98AC" text-anchor="end">کانفیگ شما آماده است</text>
+      <rect x="86" y="36" width="64" height="10" rx="4" fill="rgba(43,127,214,.3)"/>
+      <text x="118" y="43.5" font-size="6" fill="#8FC1EE" text-anchor="middle">⚡ افزودن به اپ</text>
+    </g>
+  </g>
+
+  <!-- ═══════ حسابداری ═══════ -->
+  <g transform="translate(300,28)">
+    <text x="0" y="0" font-size="11" font-weight="700" fill="#EDF2F9">حسابداری واسطه‌ها</text>
+    <text x="0" y="16" font-size="8.5" fill="#5A6880">گروه‌ها از ۳x-ui خوانده می‌شوند — نرخ هرکدام با شماست</text>
+  </g>
+
+  <!-- کارت‌های آماری -->
+  <g transform="translate(300,56)">
+    <rect width="100" height="62" rx="13" fill="url(#cd)" stroke="rgba(255,255,255,.06)" filter="url(#sf)"/>
+    <rect x="12" y="12" width="20" height="20" rx="7" fill="rgba(90,169,230,.15)"/>
+    <text x="22" y="26" font-size="10" fill="#5AA9E6" text-anchor="middle">₮</text>
+    <text x="12" y="47" font-size="13" font-weight="800" fill="#EDF2F9">۱۵,۲۰۰,۰۰۰</text>
+    <text x="12" y="56" font-size="7" fill="#8A98AC">کل بدهی</text>
+  </g>
+  <g transform="translate(408,56)">
+    <rect width="100" height="62" rx="13" fill="url(#cd)" stroke="rgba(255,255,255,.06)" filter="url(#sf)"/>
+    <rect x="12" y="12" width="20" height="20" rx="7" fill="rgba(52,211,153,.15)"/>
+    <text x="22" y="26" font-size="10" fill="#34D399" text-anchor="middle">✓</text>
+    <text x="12" y="47" font-size="13" font-weight="800" fill="#EDF2F9">۹,۰۰۰,۰۰۰</text>
+    <text x="12" y="56" font-size="7" fill="#8A98AC">دریافت‌شده</text>
+  </g>
+  <g transform="translate(516,56)">
+    <rect width="100" height="62" rx="13" fill="url(#cd)" stroke="rgba(255,255,255,.06)" filter="url(#sf)"/>
+    <rect x="12" y="12" width="20" height="20" rx="7" fill="rgba(251,191,36,.15)"/>
+    <text x="22" y="26" font-size="10" fill="#FBBF24" text-anchor="middle">◷</text>
+    <text x="12" y="47" font-size="13" font-weight="800" fill="#EDF2F9">۶,۲۰۰,۰۰۰</text>
+    <text x="12" y="56" font-size="7" fill="#8A98AC">مانده</text>
+  </g>
+  <g transform="translate(624,56)">
+    <rect width="96" height="62" rx="13" fill="url(#cd)" stroke="rgba(255,255,255,.06)" filter="url(#sf)"/>
+    <rect x="12" y="12" width="20" height="20" rx="7" fill="rgba(167,139,250,.15)"/>
+    <text x="22" y="26" font-size="10" fill="#A78BFA" text-anchor="middle">◉</text>
+    <text x="12" y="47" font-size="15" font-weight="800" fill="#EDF2F9">۹</text>
+    <text x="12" y="56" font-size="7" fill="#8A98AC">گروه از ۳x-ui</text>
+  </g>
+
+  <!-- جدول واسطه‌ها -->
+  <g transform="translate(300,130)">
+    <rect width="420" height="150" rx="15" fill="url(#cd)" stroke="rgba(255,255,255,.06)" filter="url(#sf)"/>
+    <text x="18" y="24" font-size="9.5" font-weight="700" fill="#EDF2F9">وضعیت هر واسطه</text>
+
+    <!-- unlimited -->
+    <g transform="translate(18,38)">
+      <text x="0" y="10" font-size="8.5" font-weight="600" fill="#EDF2F9">واسطه اصلی</text>
+      <text x="0" y="21" font-size="6.5" fill="#5A6880">unlimited — 64 config, 70 months</text>
+      <text x="384" y="10" font-size="9" font-weight="700" fill="#FBBF24" text-anchor="end">۴,۳۰۰,۰۰۰</text>
+      <text x="384" y="20" font-size="6" fill="#5A6880" text-anchor="end">مانده</text>
+      <rect y="27" width="384" height="4" rx="2" fill="rgba(255,255,255,.05)"/>
+      <rect y="27" width="258" height="4" rx="2" fill="url(#br)"/>
+    </g>
+
+    <!-- hossein -->
+    <g transform="translate(18,82)">
+      <text x="0" y="10" font-size="8.5" font-weight="600" fill="#EDF2F9">حسین دهلقی</text>
+      <text x="0" y="21" font-size="6.5" fill="#5A6880">Hossein dehlagi — 10 config, 10 months</text>
+      <text x="384" y="10" font-size="9" font-weight="700" fill="#34D399" text-anchor="end">۰</text>
+      <text x="384" y="20" font-size="6" fill="#5A6880" text-anchor="end">تسویه شده</text>
+      <rect y="27" width="384" height="4" rx="2" fill="rgba(255,255,255,.05)"/>
+      <rect y="27" width="384" height="4" rx="2" fill="#34D399"/>
+    </g>
+
+    <!-- هشدار -->
+    <g transform="translate(18,126)">
+      <rect width="126" height="14" rx="7" fill="rgba(251,191,36,.12)"/>
+      <text x="63" y="10" font-size="6.5" fill="#FBBF24" text-anchor="middle">۲ کانفیگ بدون نرخ</text>
+      <rect x="132" width="112" height="14" rx="7" fill="rgba(255,255,255,.04)"/>
+      <text x="188" y="10" font-size="6.5" fill="#5A6880" text-anchor="middle">۴ تمدید تخمینی</text>
+    </g>
+  </g>
+
+  <!-- نرخ‌گذاری -->
+  <g transform="translate(300,292)">
+    <rect width="205" height="86" rx="15" fill="url(#cd)" stroke="rgba(255,255,255,.06)"/>
+    <text x="16" y="22" font-size="9" font-weight="700" fill="#EDF2F9">نرخ هر گروه</text>
+
+    <rect x="16" y="32" width="60" height="20" rx="7" fill="rgba(167,139,250,.14)" stroke="rgba(167,139,250,.35)"/>
+    <text x="46" y="45.5" font-size="7" fill="#A78BFA" text-anchor="middle">♾ نامحدود</text>
+    <rect x="82" y="32" width="107" height="20" rx="7" fill="#131C2E" stroke="rgba(255,255,255,.08)"/>
+    <text x="135" y="45.5" font-size="7" fill="#8A98AC" text-anchor="middle">۶۰ گیگابایت</text>
+
+    <rect x="16" y="58" width="173" height="20" rx="7" fill="#131C2E" stroke="rgba(255,255,255,.08)"/>
+    <rect x="20" y="61" width="14" height="14" rx="4" fill="rgba(255,255,255,.05)"/>
+    <text x="27" y="71.5" font-size="9" fill="#8A98AC" text-anchor="middle">−</text>
+    <text x="102" y="72" font-size="9.5" font-weight="700" fill="#EDF2F9" text-anchor="middle">۱۹۰,۰۰۰</text>
+    <rect x="171" y="61" width="14" height="14" rx="4" fill="rgba(255,255,255,.05)"/>
+    <text x="178" y="71.5" font-size="9" fill="#8A98AC" text-anchor="middle">+</text>
+  </g>
+
+  <!-- تست اتصال -->
+  <g transform="translate(515,292)">
+    <rect width="205" height="86" rx="15" fill="url(#cd)" stroke="rgba(52,211,153,.2)"/>
+    <text x="16" y="22" font-size="9" font-weight="700" fill="#EDF2F9">تست اتصال ۳x-ui</text>
+
+    <g transform="translate(16,34)">
+      <text x="0" y="8" font-size="7" fill="#34D399">✓</text>
+      <text x="12" y="8" font-size="7" fill="#8A98AC">احراز هویت با توکن API</text>
+      <text x="0" y="21" font-size="7" fill="#34D399">✓</text>
+      <text x="12" y="21" font-size="7" fill="#8A98AC">ساخت کانفیگ آزمایشی</text>
+      <text x="0" y="34" font-size="7" fill="#34D399">✓</text>
+      <text x="12" y="34" font-size="7" fill="#8A98AC">بازخوانی و پاکسازی</text>
+    </g>
+
+    <rect x="16" y="72" width="173" height="1" fill="rgba(255,255,255,.06)"/>
+  </g>
+
+  <text x="380" y="404" font-size="8" fill="#3D4A5C" text-anchor="middle">nexora — ربات فروش و حسابداری</text>
+</svg>

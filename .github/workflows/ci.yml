@@ -1,0 +1,87 @@
+name: CI
+
+# Every push and pull request runs the whole suite. Tests are discovered by
+# tests/run.py - the same runner the release gate uses - so CI and the gate
+# cannot drift into two different lists again.
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  # several pushes in a row: only the last one matters
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  python:
+    name: Bot and backend (Python ${{ matrix.python }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # install.sh uses whatever python3 the distro ships. Ubuntu 22.04 means
+        # 3.10, so that is the oldest version that must work; testing only on a
+        # new one lets syntax that fails on 3.10 ship silently.
+        python: ["3.10", "3.12"]
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r bot/requirements.txt
+          pip install -r backend/requirements.txt
+
+      - name: Compile every module
+        run: python -m compileall -q bot backend scripts tests
+
+      - name: Bot and backend suites
+        # test-contract also needs node (built-in modules only; the runner has it)
+        run: python tests/run.py bot backend
+
+  frontend:
+    name: Frontend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package.json
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm install --no-audit --no-fund
+
+      - name: Build the panel
+        working-directory: frontend
+        run: npm run build
+
+      - name: Frontend suites
+        run: python3 tests/run.py frontend
+
+  release-gate:
+    name: Release gate
+    # tags only - makes sure the tag matches VERSION and CHANGELOG
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [python, frontend]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Version consistency
+        run: python scripts/release-check.py --tag "${GITHUB_REF_NAME}"

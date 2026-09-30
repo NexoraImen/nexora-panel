@@ -1,0 +1,67 @@
+{
+ "shop": {
+  "name": "فروشگاه",
+  "slug": "shop",
+  "settings": {
+   "brand": "فروشگاه",
+   "trial_enabled": true,
+   "force_channel": "@shop_vpn",
+   "email_prefix": "shop",
+   "cards": [
+    {
+     "number": "6037991122223333",
+     "holder": "علی رضایی",
+     "bank": "ملی"
+    }
+   ],
+   "winback": {
+    "enabled": true,
+    "percent": 20,
+    "valid_hours": 48
+   }
+  },
+  "plans": [
+   {
+    "name": "۳۰ گیگ یک‌ماهه",
+    "description": "مناسب شروع",
+    "price": 90000,
+    "gb": 30,
+    "days": 30,
+    "ip_limit": 1,
+    "kind": "volume",
+    "tab": "۱ ماهه"
+   },
+   {
+    "name": "۱۰۰ گیگ دوماهه",
+    "price": 250000,
+    "gb": 100,
+    "days": 60,
+    "ip_limit": 2,
+    "kind": "volume",
+    "tab": "۲ ماهه"
+   },
+   {
+    "name": "۲۰۰ گیگ کاربر محدود",
+    "price": 190000,
+    "gb": 200,
+    "days": 30,
+    "ip_limit": 1,
+    "kind": "limited",
+    "tab": ""
+   },
+   {
+    "name": "تست",
+    "price": 0,
+    "gb": 1,
+    "days": 1,
+    "ip_limit": 1,
+    "is_trial": 1
+   }
+  ]
+ },
+ "reseller": false,
+ "feedback": {
+  "n": 118,
+  "happy": 101
+ }
+}

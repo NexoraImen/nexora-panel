@@ -1,0 +1,40 @@
+# ابزار محلی — اسکیل‌ها و تنظیمات Claude Code
+.claude/
+
+# Build output
+frontend/dist/
+frontend/dist-test/
+frontend/node_modules/
+frontend/.env
+frontend/package-lock.json
+
+# Python
+backend/venv/
+__pycache__/
+*.pyc
+
+# Runtime data — never commit these
+#
+# مخزن عمومی است. bot.db از قبل این‌جا بود، ولی billing.db (نرخ‌ها،
+# پرداخت‌ها) و x-ui.db (ایمیل و کانفیگ مشتری‌ها) نبودند — و هر دو
+# دقیقاً کنارِ همان bot.db ساخته می‌شوند. هر کس پنل را در پوشه‌ی
+# مخزن اجرا کند، سه فایل درمی‌آید که دوتایش ردیابی‌نشده می‌ماند و یک
+# `git add -A` کافی است تا داده‌ی مشتری عمومی شود.
+#
+# An allowlist since 2.0: the denylist above missed admin_path.json (the
+# panel's secret address) and, for one commit, install_id. Everything in
+# data/ is runtime state except the shipped default settings.
+data/*
+!data/config.json
+
+# License issuer state and signing keys (docs/specs/2026-09-29-issuer.md).
+# They live in /var/lib/nexora-issuer by default; this catches a run with
+# NEXORA_ISSUER_DIR pointed inside the repo.
+*.key
+issuer.db*
+
+# Logs and temporary files
+*.log
+*.bak
+dist.prev/
+bot/.preview-raw.txt

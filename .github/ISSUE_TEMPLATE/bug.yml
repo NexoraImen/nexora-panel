@@ -1,0 +1,71 @@
+name: Bug report
+description: Something does not work, or not the way you expect
+title: "[bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        If you can, run this on the server and attach the output. It contains no tokens,
+        passwords or customer names:
+
+        ```bash
+        nexora check
+        ```
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: "`cat /opt/nexora-panel/VERSION`, or the number at the bottom of the panel"
+      placeholder: "2.0.0"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Subscription page
+        - Telegram bot
+        - Admin panel
+        - Monitoring
+        - Install and update
+        - Licensing
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead
+      placeholder: |
+        I approved a receipt and expected the config to go to the customer.
+        No message was sent and the approve buttons stayed in place.
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: "`nexora logs` at that moment, if you have it"
+      render: shell
+
+  - type: input
+    id: os
+    attributes:
+      label: OS and 3x-ui version
+      placeholder: "Ubuntu 22.04 · 3x-ui 3.7.0"
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before sending
+      options:
+        - label: I am on the latest version (`nexora update`)
+        - label: I removed tokens, passwords and card numbers from the text and screenshots
+          required: true
