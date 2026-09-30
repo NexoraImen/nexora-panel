@@ -31,7 +31,7 @@ import { LivePreview, SystemSection } from "./sections/system";
 import { WorkspaceSwitch } from "./shell/workspace";
 import { CommandPalette, ConfirmModal, ErrorBoundary, LoginScreen, NavAlert, NavIndicator, StatusChip, Toast } from "./ui/index";
 import { AlertBell } from "./shell/alertbell";
-import { LicenseBanner, ProMark, ProSection } from "./ui/pro";
+import { LicenseBanner, ProMark, ProSection, StaleBuildBanner } from "./ui/pro";
 import { errText } from "./lib/format";
 import { readKey, workspaceOf, writeKey } from "./lib/panelroute";
 
@@ -491,6 +491,7 @@ export default function App() {
             key که عوض شود، React درخت را از نو می‌سازد. «فوری ولی
             زنده» — نه جایگزینیِ ناگهانی، نه انتظارِ نمایشی. */}
         <main className="fx-main flex-1 p-7 overflow-y-auto w-full mx-auto">
+          <StaleBuildBanner />
           <LicenseBanner password={password} />
           <div key={active} className="fx-stg">
           <ErrorBoundary key={active}>

@@ -20,8 +20,8 @@ from pathlib import Path
 
 TMP = tempfile.mkdtemp(prefix="adminpath_")
 os.environ.update(
-    BOT_DB_PATH=os.path.join(TMP, "bot.db"), BOT_DB=os.path.join(TMP, "bot.db"),
-    BILLING_DB=os.path.join(TMP, "billing.db"), NEXORA_ADMIN_PASSWORD="testpw",
+    BOT_DB_PATH=os.path.join(TMP, "bot.db"),
+    BILLING_DB_PATH=os.path.join(TMP, "billing.db"), NEXORA_ADMIN_PASSWORD="testpw",
     CONFIG_PATH=os.path.join(TMP, "config.json"),
     ADMIN_PATH_FILE=os.path.join(TMP, "admin_path.json"))
 os.environ.pop("NEXORA_ADMIN_PATH", None)

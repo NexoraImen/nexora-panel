@@ -18,8 +18,8 @@ from pathlib import Path
 
 TMP = tempfile.mkdtemp(prefix="funnel_")
 os.environ.update(
-    BOT_DB_PATH=os.path.join(TMP, "bot.db"), BOT_DB=os.path.join(TMP, "bot.db"),
-    BILLING_DB=os.path.join(TMP, "billing.db"), NEXORA_ADMIN_PASSWORD="testpw",
+    BOT_DB_PATH=os.path.join(TMP, "bot.db"),
+    BILLING_DB_PATH=os.path.join(TMP, "billing.db"), NEXORA_ADMIN_PASSWORD="testpw",
     NEXORA_CONFIG=os.path.join(TMP, "config.json"))
 ROOT = Path(__file__).resolve().parent.parent
 sys.path[:0] = [str(ROOT / "bot"), str(ROOT / "backend")]
@@ -405,7 +405,7 @@ H.show_plans(ctx, U(), 500, None, kind="limited")
 check("نوعِ تک‌تب: مرحله‌ی تب پریده می‌شود", "۲۰۰ گیگ کاربر محدود" in SENT[-1]["kb"]
       and "pt:" not in SENT[-1]["kb"])
 check("دکمه‌ی پلن: نام + قیمت، بی مشخصاتِ خودکار",
-      H.core.plan_line({"name": "طلایی", "gb": 30, "days": 30, "price": 90000}) == f"طلایی — {H.core.toman(90000)} تومان",
+      H.core.plan_line({"name": "طلایی", "gb": 30, "days": 30, "price": 90000}) == f"طلایی · {H.core.toman(90000)} تومان",
       H.core.plan_line({"name": "طلایی", "gb": 30, "days": 30, "price": 90000}))
 if PRO:                                   # the mini app is Pro
     mp = AP.mini_plans(tu=(T, U()))["plans"]

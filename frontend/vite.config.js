@@ -1,5 +1,6 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import fs from "fs";
 
 /*
  * یک بیلدِ تک‌فایلی برای تستِ اجرا.
@@ -15,8 +16,17 @@ import react from "@vitejs/plugin-react";
  */
 const SINGLE = !!process.env.NEXORA_SINGLE_BUNDLE;
 
+/* The version this UI was built from. The panel compares it with the
+   server's (`/api/admin/ping`): after `nexora update` a server could run the
+   new backend with the old UI, when the build step did not complete, and
+   nothing said so (docs/specs/2026-09-30-vpn-fixes.md, task 10). */
+let BUILD_VERSION = "";
+try { BUILD_VERSION = fs.readFileSync(new URL("../VERSION", import.meta.url), "utf8").trim(); }
+catch { BUILD_VERSION = ""; }
+
 export default defineConfig({
   plugins: [react()],
+  define: { __NX_BUILD__: JSON.stringify(BUILD_VERSION) },
   server: { port: 5174 },
   build: {
     outDir: SINGLE ? "dist-test" : "dist",

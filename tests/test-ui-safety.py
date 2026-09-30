@@ -292,8 +292,11 @@ check("متن‌های ربات: فهرست و ویرایشگر با پیش‌ن
       "tx-split" in ALL.get("sections/bot/texts.jsx", "")
       and "tgHtml" in ALL.get("sections/bot/texts.jsx", ""))
 check("سوالات متداول هم", "fx-g2-even" in ALL.get("sections/subpage.jsx", ""))
+# Side by side, 300 px cards. Since 2.0.1 wrapping rows whose last row
+# stretches, so a lone last card no longer leaves half the row empty.
 pro_check("و سرورهای تانل گرید گرفته‌اند", "pro/tunnel.jsx",
-          lambda src: "minmax(300px,1fr)" in src)
+          lambda src: "fx-wrap-cards" in src
+          and ".fx-wrap-cards > * { flex: 1 1 300px" in CSS)
 
 
 # ═══════════════════════════════════════════════════════════
@@ -1870,6 +1873,15 @@ check("لوگوی اسپلش سایه‌ی تار ندارد — هاله گرا
 
 if _PRO_SKIPPED:
     print(f"\n  {D}Community tree: {len(_PRO_SKIPPED)} Pro checks skipped (no frontend/src/pro/){X}")
+# The UI knows the version it was built from and says when the server runs
+# another (an update whose build step did not finish; task 10).
+_VITE = io.open(os.path.join(SRC, "..", "vite.config.js"), encoding="utf-8").read()
+_APPB = io.open(os.path.join(SRC, "..", "..", "backend", "app.py"), encoding="utf-8").read()
+check("the build carries its version and the panel compares it with the server's",
+      "__NX_BUILD__" in _VITE and "<StaleBuildBanner" in ALL.get("App.jsx", "")
+      and "__NX_BUILD__" in ALL.get("ui/pro.jsx", "")
+      and '"version": _panel_version()' in _APPB)
+
 color = G if not _fail else R
 print(f"  {color}{_ok} پاس{X}" + (f" · {R}{_fail} ناموفق{X}" if _fail else ""))
 print()

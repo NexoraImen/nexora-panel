@@ -2646,7 +2646,7 @@ try:
     _qc.executescript(_BDq.SCHEMA)
     _BDq._migrate(_qc)
     _qc.execute("INSERT INTO tenants (id,name,bot_token,settings) "
-                "VALUES (1,'owner','1:x','{}')")
+                "VALUES (1,'owner','1:x','{\"miniapp_url\": \"https://panel.example/app\"}')")
     _qc.execute("INSERT INTO users (id,tenant_id,tg_id,first_name) "
                 "VALUES (1,1,5550001,'مریم')")
     _qc.commit()
@@ -2671,6 +2671,11 @@ try:
             return {"ok": True}
 
     _hq.Bot = _FakeBotQ
+    # The mini app is Pro (`mini_app`); no license is active in this test, so
+    # without this the "with a mini app" branch would never run here.
+    _old_pa = _hq.pro_allowed
+    if PRO:
+        _hq.pro_allowed = lambda f: True
     # The bot's own db module reads its DB_PATH, not app.BOT_DB. Point it at
     # this section's database too: it found user 1 only because a reseller
     # section earlier in the file had left one in the shared test database,
@@ -2678,15 +2683,27 @@ try:
     _old_hq_db = _hq.DB.DB_PATH
     _hq.DB.DB_PATH = _qdb
     try:
+        # A system note the buyer never read (a reminder copy) must not
+        # silence support notices: the old count included those.
+        _BDq.TenantDB(1).chat_add(1, "system", "یادآوری ۳ روز مانده")
+        _has_app = bool(_hq.miniapp_url(app._mini_ctx(app._root_tenant_row())[1]))
+        if PRO:
+            check("with Pro the shop has a mini app (the branch below is tested)", _has_app)
         for _i in range(1, 6):
             app.admin_inbox_send({"userId": 1, "body": f"پاسخ {_i}"},
                                  x_admin_password=app._INTERNAL_PW)
 
-        check("پنج پاسخِ پشت‌سرهم یک خبر می‌دهد، نه پنج‌تا",
-              len(_sentq) == 1, f"{len(_sentq)} پیام در ربات")
-        check("و متنِ پاسخ در ربات نوشته نمی‌شود",
-              _sentq and "پاسخ ۱" not in _sentq[0] and "پاسخ 1" not in _sentq[0],
-              "مکالمه نباید دو جا تکرار شود")
+        if _has_app:
+            check("پنج پاسخِ پشت‌سرهم یک خبر می‌دهد، نه پنج‌تا",
+                  len(_sentq) == 1, f"{len(_sentq)} پیام در ربات")
+            check("و متنِ پاسخ در ربات نوشته نمی‌شود",
+                  _sentq and "پاسخ ۱" not in _sentq[0] and "پاسخ 1" not in _sentq[0],
+                  "مکالمه نباید دو جا تکرار شود")
+        else:
+            # Without a mini app the bot is the only place to read a reply:
+            # the old "press /start to see it" led nowhere.
+            check("without a mini app each reply arrives in full in the bot",
+                  len(_sentq) == 5 and "پاسخ 3" in _sentq[2], _sentq[:2])
 
         if PRO:
             # مشتری می‌خواند → چرخه از نو
@@ -2703,10 +2720,11 @@ try:
             _boxq = app.mini_inbox((app._root_tenant_row(),
                                     {"id": 1, "tg_id": 5550001, "first_name": "مریم"}))
             check("هر شش پاسخ در صندوقِ مینی‌اپ هست",
-                  len(_boxq.get("messages") or []) == 6,
+                  len([m for m in (_boxq.get("messages") or []) if m.get("from") == "admin"]) == 6,
                   f"{len(_boxq.get('messages') or [])} پیام")
     finally:
         _hq.Bot = _old_botcls
+        _hq.pro_allowed = _old_pa
         _hq.DB.DB_PATH = _old_hq_db
 finally:
     app.BOT_DB = _old_botq

@@ -68,7 +68,7 @@ KINDS = {
         "level": "error", "alert": False,
     },
     "token_invalid": {
-        "label": "توکنِ ربات نامعتبر شد — ربات غیرفعال شد",
+        "label": "توکن ربات نامعتبر شد و ربات غیرفعال شد",
         "level": "error", "alert": False,
     },
     "scheduler_failed": {
@@ -152,7 +152,7 @@ def describe(kind, data=None):
     if d.get("post"):
         bits.append(f"پست #{d['post']}")
     if bits:
-        out += " — " + " · ".join(bits)
+        out += ": " + " · ".join(bits)
 
     err = d.get("error")
     if err:

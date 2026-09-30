@@ -190,6 +190,6 @@ def license_line(row):
     plan = dict(core.LICENSE_PLANS).get(row.get("plan"), "")
     return (f"{'🔴' if over else '🔑'} {F.b('نکسورا Pro')} {esc(plan)} · "
             f"{F.code(row['license_id'])}\n"
-            + (f"⛔ {F.b('اعتبار تمام شده')} — تا {_date(exp)} بود" if over
+            + (f"⛔ {F.b('اعتبار تمام شده')} (تا {_date(exp)} بود)" if over
                else f"⏳ تا {_date(exp)}")
             + (f" · کلید …{esc(row['key_hint'])}" if row.get("key_hint") else ""))

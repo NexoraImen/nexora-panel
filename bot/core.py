@@ -268,7 +268,7 @@ def fa_datetime(value):
     date_part = raw[:10]
     time_part = raw[11:16].strip()
     d = fa_date(date_part, with_month_name=False)
-    return f"{d} — {fa(time_part)}" if time_part else d
+    return f"{d}، {fa(time_part)}" if time_part else d
 
 
 def toman(n):
@@ -300,7 +300,7 @@ def plan_line(p):
     نوشته بود («۲۰۰ گیگ کاربر محدود ۲ ماهه») زیرِ مشخصاتِ تکراری گم می‌شد.
     مشخصات در صفحه‌ی پلن است.
     """
-    return f"{p['name']} — {toman(p['price'])} تومان"
+    return f"{p['name']} · {toman(p['price'])} تومان"
 
 
 #: نوعِ پلن — همین فهرست در `frontend/src/lib/plankinds.js` (تستِ برابری)
@@ -451,6 +451,40 @@ def days_left(expires_at):
     return max(int(delta.total_seconds() // 86400), 0) if delta.total_seconds() > 0 else 0
 
 
+def start_on_use(settings):
+    """Do bot-made configs count their days from the first connection?
+    On unless the shop turned it off: a buyer who connects a week after paying
+    should not lose that week (docs/specs/2026-09-30-vpn-fixes.md, task 9)."""
+    v = (settings or {}).get("start_on_first_use")
+    return True if v is None else bool(v)
+
+
+#: Days after a config ended (date passed or volume used up) before the sweep
+#: deletes it; the buyer is warned one day before. 0 turns deletion off.
+DELETE_EXPIRED_DAYS = 5
+
+
+def delete_after_days(settings):
+    v = (settings or {}).get("delete_expired_days")
+    if v is None or v == "":
+        return DELETE_EXPIRED_DAYS
+    try:
+        v = int(v)
+    except (TypeError, ValueError):
+        return DELETE_EXPIRED_DAYS
+    return v if 0 <= v <= 90 else DELETE_EXPIRED_DAYS
+
+
+def pending_text(sub):
+    """'N days from the first connection' for a config that has not started;
+    '' otherwise. Without it such a config read "no time limit"."""
+    s = sub or {}
+    n = int(s.get("pending_days") or 0)
+    if n > 0 and not s.get("expires_at"):
+        return f"{fa(n)} روز از اولین اتصال"
+    return ""
+
+
 def days_past(expires_at):
     """
     چند روز از انقضا گذشته. اگر هنوز منقضی نشده یا تاریخ ندارد: صفر.
@@ -536,12 +570,10 @@ TRIAL_MSG_DEFAULTS = {
                      "اگه بخوای {brand} رو با یه کلمه توصیف کنی، نظرت چیه؟ 😄"),
     "trial_msg_24": ("{name}، تستت به پایان رسید\n"
                      "اگر از تست راضی بودی و دوست داشتی ادامه بدی 💙\n\n"
-                     "می‌تونی سرویس موردنظرت رو مستقیم از مینی‌اپ {brand} انتخاب و خرید کنی 👇\n\n"
-                     "🛒 خرید سریع و آنلاین\n"
-                     "☁️ بدون نیاز به پیام دادن به پشتیبانی"),
+                     "می‌تونی سرویس موردنظرت رو مستقیم از مینی‌اپ {brand} انتخاب و بخری، بدون اینکه به پشتیبانی پیام بدی 👇"),
     # نظرسنجیِ چند روز بعد از خرید و تمدید (فاز ۳) — همان چهار دکمه‌ی کیفیت
     "fb_msg_buy": ("سلام {name} 🌷\n"
-                   "چند روزه که اشتراک {brand} رو داری — راضی هستی؟ 😊\n\n"
+                   "چند روزه که اشتراک {brand} رو داری. راضی هستی؟ 😊\n\n"
                    "سرعت و اتصالش چطور بوده؟"),
     "fb_msg_renew": ("{name}، ممنون که دوباره {brand} رو انتخاب کردی 💙\n\n"
                      "این دوره سرعت و اتصالش چطور بوده؟"),
@@ -563,7 +595,7 @@ def satisfaction_line(sat):
     """خطِ «رضایت» برای بالای پلن‌ها — یا خالی اگر هنوز نظرِ کافی نیست."""
     if not sat:
         return ""
-    return f"⭐ {fa(sat['pct'])}٪ از مشتری‌ها راضی‌اند — {fa(sat['n'])} نظر"
+    return f"⭐ {fa(sat['pct'])}٪ از مشتری‌ها راضی‌اند ({fa(sat['n'])} نظر)"
 
 
 def trial_msg(settings, key, name="", brand="", esc=lambda x: x):

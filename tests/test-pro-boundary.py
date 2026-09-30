@@ -28,8 +28,8 @@ ROOT = Path(__file__).resolve().parent.parent
 TMP = tempfile.mkdtemp(prefix="proboundary_")
 ENV = dict(
     NEXORA_LICENSE_DIR=os.path.join(TMP, "license"),
-    BOT_DB_PATH=os.path.join(TMP, "bot.db"), BOT_DB=os.path.join(TMP, "bot.db"),
-    BILLING_DB=os.path.join(TMP, "billing.db"), NEXORA_ADMIN_PASSWORD="testpw",
+    BOT_DB_PATH=os.path.join(TMP, "bot.db"),
+    BILLING_DB_PATH=os.path.join(TMP, "billing.db"), NEXORA_ADMIN_PASSWORD="testpw",
     CONFIG_PATH=os.path.join(TMP, "config.json"),
     ADMIN_PATH_FILE=os.path.join(TMP, "admin_path.json"))
 os.environ.update(ENV)
@@ -295,7 +295,7 @@ print(json.dumps({"loaded": AP.PRO_LOADED, "error": AP.PRO_ERROR,
 def probe(api_dir, bot_dir):
     env = {**os.environ, **ENV, "R": str(ROOT), "PYTHONIOENCODING": "utf-8",
            "NEXORA_PRO_API_DIR": api_dir, "NEXORA_PRO_BOT_DIR": bot_dir,
-           "BOT_DB_PATH": os.path.join(TMP, "p.db"), "BOT_DB": os.path.join(TMP, "p.db")}
+           "BOT_DB_PATH": os.path.join(TMP, "p.db"), "BOT_DB_PATH": os.path.join(TMP, "p.db")}
     p = subprocess.run([sys.executable, "-c", PROBE], capture_output=True, text=True,
                        encoding="utf-8", env=env, cwd=str(ROOT))
     try:

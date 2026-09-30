@@ -464,6 +464,41 @@ section("حذف")
 c.delete_client(41, res["uuid"], email=EMAIL)
 check("کلاینت از پنل پاک شد", EMAIL not in CLIENTS)
 
+# ═══════════════ تمدیدِ کانفیگی که هنوز شروع نشده ═══════════════
+# "Start after first use" is a negative expiryTime (a duration). Renewing
+# one used to count from today and took away the days not used yet.
+section("تمدیدِ «شروع از اولین اتصال»")
+import time as _time  # noqa: E402
+
+_DAY = 86400000
+
+
+class _Ext(X.XUI):
+    def __init__(self, exp):
+        self._exp, self.upd = exp, None
+
+    def find_client(self, ib, email=None, client_uuid=None):
+        return {"email": "e", "expiryTime": self._exp, "totalGB": 0}
+
+    def update_client(self, ib, uuid=None, email=None, **ch):
+        self.upd = ch
+
+
+_e = _Ext(-30 * _DAY)
+_r = _e.extend_subscription(1, "u", 30, email="e")
+check("شروع‌نشده: ۳۰ روز به مدتِ در انتظار اضافه می‌شود، نه از امروز",
+      _e.upd["expiryTime"] == -60 * _DAY and _r["expiry_ms"] == -60 * _DAY, _e.upd)
+_now = int(_time.time() * 1000)
+_e = _Ext(_now + 10 * _DAY)
+_e.extend_subscription(1, "u", 30, email="e")
+check("فعال: از تاریخِ فعلی جلو می‌رود", abs(_e.upd["expiryTime"] - (_now + 40 * _DAY)) < 5000)
+_e = _Ext(_now - 3 * _DAY)
+_e.extend_subscription(1, "u", 30, email="e")
+check("منقضی: از امروز", abs(_e.upd["expiryTime"] - (_now + 30 * _DAY)) < 5000)
+_c = X.XUI.__new__(X.XUI)
+check("ساخت با start_on_use مدت را منفی می‌فرستد",
+      "expiry = -int(days * 86400 * 1000)" in open(X.__file__, encoding="utf-8").read())
+
 print(f"\n{D}{'═' * 52}{X0}")
 color = G if not _fail else R
 print(f"  نتیجه:  {color}{_ok} پاس{X0}  |  "

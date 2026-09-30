@@ -1160,8 +1160,12 @@ def admin_ping():
     «این نشانی درست است؟» — بی رمز. خودِ پاسخ یعنی هدرِ نشانی درست بود
     (وگرنه `_admin_path_gate` پیش از این‌جا 404 داده). رابط از این می‌فهمد
     صفحه‌ی ورود را نشان بدهد یا «پیدا نشد» را.
+
+    `version`: the UI compares it with the version it was built from and
+    says so when an update left the old UI in place (task 10). Only callers
+    that already know the secret admin path get here.
     """
-    return {"ok": True}
+    return {"ok": True, "version": _panel_version()}
 
 
 @app.get("/api/admin/panel-path")
@@ -2955,25 +2959,16 @@ def _inbox_send(t, payload):
     # خبرِ خوانده‌نشده‌ای از قبل نمانده باشد**. اگر پشتیبانی پنج
     # پیامِ پشت‌سرهم بدهد، مشتری یک خبر می‌گیرد نه پنج‌تا؛ و تا
     # نخواندشان، خبرِ تازه‌ای نمی‌آید.
+    # The rule (one notice while unread; full text only without a mini app)
+    # lives in the bot's `support_reply`: the bot's own admin paths use it
+    # too. This copy used to count unread *system* notes as well, so a buyer
+    # who never opened the mini app got no notice again, ever.
     if u:
         try:
-            db2 = _bot_db_rw(t)
-            pending = int(db2.chat_unread_for_user(uid) or 0)
+            h, ctx = _mini_ctx(t)
+            h.support_reply(ctx, u, body, photo=photo, stored=True)
         except Exception:
-            pending = 1        # نمی‌دانیم — پس ساکت می‌مانیم
-        # پیامِ همین لحظه خودش یکی از نخوانده‌هاست؛ بیشتر از یک یعنی
-        # از قبل هم خبری بوده که مشتری هنوز ندیده
-        if pending <= 1:
-            try:
-                h, ctx = _mini_ctx(t)
-                app_url = h.miniapp_url(ctx)
-                note = ("💬 پاسخ پشتیبانی برایتان آمد."
-                        + ("" if app_url else "\n\nبرای دیدنش /start را بزنید."))
-                keys = h.kb([[("💬 دیدنِ پاسخ", app_url, "web_app")]]) \
-                    if app_url else None
-                ctx.bot.send(u["tg_id"], note, keyboard=keys)
-            except Exception:
-                log.debug("خبرِ پاسخ در تلگرام ناموفق", exc_info=True)
+            log.warning("support notice to %s failed", uid, exc_info=True)
 
     return {"ok": True, "photo": photo or ""}
 
@@ -4412,6 +4407,153 @@ def _loop_ok(key):
 _HEALTH_HOOKS = []
 
 
+# ── Config lifecycle (docs/specs/2026-09-30-vpn-fixes.md, task 9) ─────────
+#: The sweep runs from the health loop (every 5 minutes) but works hourly.
+SUB_SWEEP_EVERY = 3600
+_SUB_SWEEP = {"at": 0.0}
+
+
+def _sub_ended(cl, now):
+    """Has this 3x-ui client ended: date passed, or volume used up? 3x-ui is
+    the truth here, not the bot's copy: the owner edits dates in 3x-ui too.
+    A negative expiry has not started yet; zero never expires."""
+    exp = int(cl.get("expiry") or 0)
+    if exp > 0 and exp / 1000 <= now.timestamp():
+        return True
+    total = int(cl.get("totalGB") or 0)
+    return bool(total and int(cl.get("used") or 0) >= total)
+
+
+def _sub_delete(h, t, d, s, now):
+    """Delete one ended config and mark it; False when it was not deleted.
+    Holds the renewal lock so a renewal cannot land on a deleted config."""
+    if not d.claim_renewal(s["id"]):
+        return False                      # being renewed right now
+    try:
+        fresh = d.q("SELECT * FROM subscriptions WHERE tenant_id=? AND id=?",
+                    (t["id"], s["id"]), one=True)
+        if not fresh or fresh.get("deleted_at") or not fresh.get("ended_at"):
+            return False                  # renewed or gone meanwhile
+        if t.get("parent_id"):
+            # A reseller's config carries a bill. Only the billing core may
+            # delete it; without Pro there is none, so it stays (and says so).
+            core_del = globals().get("_portal_delete_core")
+            if core_del is None:
+                log.warning("sub sweep: reseller %s config %s not deleted: "
+                            "billing core (Pro) not loaded", t["id"], s["client_email"])
+                return False
+            core_del(t, s["client_email"], by_whom="auto: expired, not renewed",
+                     refund=False)
+        else:
+            ctx = h.Ctx(h.Bot(t["bot_token"]), t)
+            ctx.xui.delete_client(s["inbound_id"], s["client_uuid"],
+                                  email=s["client_email"])
+        d.exec("UPDATE subscriptions SET is_active=0, deleted_at=?, "
+               "deleted_why='expired' WHERE tenant_id=? AND id=?",
+               (now.isoformat(timespec="seconds"), t["id"], s["id"]))
+        d.log("sub_deleted", s["user_id"], {"sub": s["id"], "email": s["client_email"]})
+        return True
+    except Exception as e:
+        log.warning("sub sweep: deleting %s failed: %s", s["client_email"], e)
+        d.log("sub_delete_failed", s["user_id"],
+              {"sub": s["id"], "error": str(e)[:200]})
+        return False
+    finally:
+        d.release_renewal(s["id"])
+
+
+def _sub_lifecycle_shop(h, t, index, now):
+    """One shop's pass. Returns counts, for the log and the tests."""
+    d = h.DB.TenantDB(t["id"])
+    days = h.core.delete_after_days(h.DB.tenant_settings(t["id"]))
+    out = {"gone": 0, "started": 0, "ended": 0, "warned": 0, "deleted": 0,
+           "skipped": ""}
+    subs = d.q("SELECT s.*, u.tg_id FROM subscriptions s JOIN users u ON u.id=s.user_id "
+               "WHERE s.tenant_id=? AND s.is_active=1 AND s.deleted_at IS NULL",
+               (t["id"],))
+    missing = [s for s in subs if s["client_email"] not in index]
+    # Half the shop gone at once is a wrong panel or a bad read, not hands
+    # deleting configs one by one: mark nothing and say so.
+    guard = len(missing) >= 5 and len(missing) * 2 >= len(subs)
+    if guard:
+        out["skipped"] = f"{len(missing)} of {len(subs)} configs missing from 3x-ui"
+        log.warning("sub sweep: shop %s: %s; nothing marked", t["id"], out["skipped"])
+        d.log("sub_sweep_skipped", None, {"why": out["skipped"]})
+    stamp = now.isoformat(timespec="seconds")
+    for s in subs:
+        cl = index.get(s["client_email"])
+        if cl is None:
+            if not guard:
+                d.exec("UPDATE subscriptions SET is_active=0, deleted_at=?, "
+                       "deleted_why='missing_in_panel' WHERE tenant_id=? AND id=?",
+                       (stamp, t["id"], s["id"]))
+                d.log("sub_gone", s["user_id"], {"sub": s["id"], "email": s["client_email"]})
+                out["gone"] += 1
+            continue
+        exp = int(cl.get("expiry") or 0)
+        if not s.get("expires_at") and s.get("pending_days") and exp > 0:
+            # First connection happened: 3x-ui turned the duration into a date.
+            iso = datetime.fromtimestamp(exp / 1000).isoformat(timespec="seconds")
+            d.exec("UPDATE subscriptions SET expires_at=?, pending_days=NULL "
+                   "WHERE tenant_id=? AND id=?", (iso, t["id"], s["id"]))
+            out["started"] += 1
+        if not _sub_ended(cl, now):
+            if s.get("ended_at"):         # renewed by hand in 3x-ui
+                d.exec("UPDATE subscriptions SET ended_at=NULL, notified_del=0 "
+                       "WHERE tenant_id=? AND id=?", (t["id"], s["id"]))
+            continue
+        ended_at = s.get("ended_at")
+        if not ended_at:
+            # The first time the sweep sees it, not the expiry date: on the
+            # first run after an update, months-old expired configs would
+            # otherwise be deleted at once, with no warning.
+            ended_at = stamp
+            d.exec("UPDATE subscriptions SET ended_at=? WHERE tenant_id=? AND id=?",
+                   (stamp, t["id"], s["id"]))
+            out["ended"] += 1
+        if days <= 0:
+            continue
+        since = now - datetime.fromisoformat(str(ended_at)[:19])
+        if since >= timedelta(days=days):
+            if _sub_delete(h, t, d, {**s, "ended_at": ended_at}, now):
+                out["deleted"] += 1
+        elif since >= timedelta(days=days - 1) and not s.get("notified_del"):
+            try:
+                h.send_delete_notice(t, h.Bot(t["bot_token"]), s)
+            except Exception as e:
+                # A buyer who blocked the bot must not block the deletion.
+                log.warning("sub sweep: delete notice to %s failed: %s", s.get("tg_id"), e)
+            d.exec("UPDATE subscriptions SET notified_del=1 WHERE tenant_id=? AND id=?",
+                   (t["id"], s["id"]))
+            out["warned"] += 1
+    return out
+
+
+def _sub_lifecycle_tick(now=None, force=False):
+    """
+    Hourly: configs the bot made, against 3x-ui. Marks the start of configs
+    that count from the first connection, hides configs deleted by hand in
+    3x-ui, warns the day before and deletes configs that ended and were not
+    renewed for `delete_expired_days`. Runs in the panel, which reads the x-ui
+    database once for every shop and holds the billing core. Returns
+    {shop id: counts}, or None when it is not due yet.
+    """
+    if not force and time.time() - _SUB_SWEEP["at"] < SUB_SWEEP_EVERY:
+        return None
+    _SUB_SWEEP["at"] = time.time()
+    now = now or datetime.now()
+    clients, _keys, err = _read_xui_clients()
+    if clients is None:
+        raise RuntimeError(f"x-ui database unreadable: {err}")
+    index = {c.get("email"): c for c in clients if c.get("email")}
+    h = _bot_handlers()
+    report = {}
+    for t in h.DB.all_tenants(active_only=True):
+        if t.get("bot_token"):
+            report[t["id"]] = _sub_lifecycle_shop(h, t, index, now)
+    return report
+
+
 def _start_health_loop():
     """
     بررسی خودکار سلامت هر ۵ دقیقه.
@@ -4453,6 +4595,12 @@ def _start_health_loop():
                 _loop_ok("maint")
             except Exception as e:
                 _loop_fail("maint", e)
+
+            try:
+                if _sub_lifecycle_tick() is not None:
+                    _loop_ok("sub-lifecycle")
+            except Exception as e:
+                _loop_fail("sub-lifecycle", e)
 
             time.sleep(300)
 
@@ -6129,21 +6277,29 @@ def _period_payment(paid_at, settles, cut):
     return not (settles and d <= cut)
 
 
-def _deleted_usage(bcon, xui_bank):
+def _deleted_usage(bcon, xui_bank, mixed=()):
     """
     {گروه: بایت} مصرفِ کانفیگ‌های حذف‌شده — برای بدهیِ حجمی.
 
     با بانکِ x-ui فقط مصرفِ جاریِ لحظه‌ی حذف گم شده (`used_live`)؛ بانکِ
     ریست‌های قبلی‌اش در گروه مانده. بی بانکِ x-ui، کلِ عمرش (`used`) —
     چون بانکِ خودمان از روی کلاینت‌های زنده ساخته می‌شود.
+
+    A mixed group (`_volume_mixed`) counts only deleted configs that had a
+    volume cap, over their whole life: its unlimited configs are billed at a
+    rate, and its bank is the panel's per-config record, not x-ui's.
     """
     out = {}
     try:
         for r in bcon.execute(
                 "SELECT group_key, COALESCE(SUM(used),0) u, "
-                "COALESCE(SUM(COALESCE(used_live, used)),0) l "
+                "COALESCE(SUM(COALESCE(used_live, used)),0) l, "
+                "COALESCE(SUM(CASE WHEN COALESCE(gb,0) > 0 THEN used ELSE 0 END),0) c "
                 "FROM deleted_clients GROUP BY group_key"):
-            out[r["group_key"]] = int(r["l"] if xui_bank else r["u"])
+            if r["group_key"] in mixed:
+                out[r["group_key"]] = int(r["c"])
+            else:
+                out[r["group_key"]] = int(r["l"] if xui_bank else r["u"])
     except Exception as e:
         # بی‌صدا صفر نمی‌شود: بدهیِ حجمی کمتر از واقعیت یعنی پولِ ازدست‌رفته
         log.warning("deleted usage unreadable: %s", e)
@@ -6896,6 +7052,45 @@ def _price_per_gb(conf):
         return v if v > 0 else None
     except (TypeError, ValueError):
         return None
+
+
+def _volume_mixed(conf):
+    """
+    A volume group (per-GB price) that also prices truly unlimited configs:
+    its rates carry a gb=0 row with a price. docs/specs/2026-09-30-vpn-fixes.md,
+    task 5. The owner: volume configs by usage, unlimited ones at a rate.
+
+    Without such a row a volume group stays exactly what it was: every config,
+    unlimited or not, billed by usage.
+    """
+    if not _price_per_gb(conf or {}):
+        return False
+    try:
+        rates = json.loads((conf or {}).get("rates") or "[]")
+    except (json.JSONDecodeError, TypeError):
+        return False
+    for r in rates if isinstance(rates, list) else []:
+        try:
+            if int(r.get("gb", -1)) == 0 and int(r.get("price", 0)) > 0:
+                return True
+        except (TypeError, ValueError, AttributeError):
+            continue
+    return False
+
+
+def _by_usage(conf, cl, mixed=None):
+    """
+    Is this config billed by its usage? The one rule every billing surface
+    reads (dashboard, invoice, period page, settlement, portal): in a volume
+    group, yes, except a config with no volume cap when the group prices
+    unlimited configs (`_volume_mixed`). Those are billed like any rated
+    config: the rate times the months of the period.
+    """
+    if not _price_per_gb(conf or {}):
+        return False
+    if mixed is None:
+        mixed = _volume_mixed(conf)
+    return not (mixed and int(cl.get("totalGB") or 0) == 0)
 
 
 def _price_for(gb, rates):
@@ -8511,7 +8706,9 @@ def _plan_floor(conf, rates, gb, days, ips):
     چیزی اضافه نمی‌کند — نرخِ حجمی به مصرف است، نه به تعدادِ دستگاه.
     """
     per_gb = _price_per_gb(conf or {})
-    if per_gb:
+    # A mixed volume group prices unlimited configs at a rate (task 5): an
+    # unlimited plan's floor is that rate, like a rated group's.
+    if per_gb and not (gb <= 0 and _volume_mixed(conf)):
         # «نامحدود» این فروشگاه در عمل سقفِ منصفانه دارد — مالک: «نامحدودی
         # که ما تعریف می‌کنیم ۲۰۰ گیگ است». پس کفِ پلنِ نامحدود همان حجم ×
         # نرخ است، نه «نامعلوم». عدد را مالک در «قابلیت‌های نماینده‌ها» عوض
@@ -8591,7 +8788,9 @@ def _refresh_plan_costs(group_key=None):
                 st = st if isinstance(st, dict) else {}
             except (json.JSONDecodeError, TypeError):
                 st = {}
-            want = cap_gb if _price_per_gb(conf) else None
+            # A mixed group sells real unlimited configs at their rate (task
+            # 5), so its bot gets no "unlimited = N GB" cap.
+            want = cap_gb if _price_per_gb(conf) and not _volume_mixed(conf) else None
             if st.get("unlimited_cap_gb") != want:
                 if want:
                     st["unlimited_cap_gb"] = want

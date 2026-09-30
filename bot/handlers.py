@@ -460,7 +460,7 @@ def main_menu(ctx, user):
     # هم بشود.
     app_url = miniapp_url(ctx)
     if app_url:
-        rows.insert(0, [("📱 اپلیکیشن", app_url, "web_app")])
+        rows.insert(0, [("📱 اپلیکیشن", app_url, "web_app", "primary")])
 
     # تستِ رایگان بالای همه — اولین چیزی که کسی که هنوز چیزی نخریده
     # می‌بیند — و سبز (مالک: «وقتی ربات باز می‌شود دکمه‌ی اشتراک رایگان
@@ -490,8 +490,14 @@ def welcome_text(ctx, user):
     brand = esc(ctx.brand())
 
     # خطِ پررنگِ تست — متنِ دکمه نمی‌تواند پررنگ باشد، متنِ پیام می‌تواند
-    offer = (F.b("🎁 تست رایگان داریم!") + " هر نفر یک‌بار، بدون پرداخت — "
+    offer = (F.b("🎁 تست رایگان داریم!") + " هر نفر یک‌بار و بدون پرداخت. "
              "از دکمه‌ی سبزِ بالا بگیرید.") if trial_offer(ctx, user) else ""
+    # The mini app, suggested to everyone who has one (task 6): the owner
+    # wants buyers there, and a button alone was easy to miss.
+    if miniapp_url(ctx):
+        app_line = ("📱 کار با " + F.b("اپلیکیشن") + " راحت‌تر است: خرید، تمدید، "
+                    "اشتراک‌ها و گفتگو با پشتیبانی همه آن‌جاست.")
+        offer = f"{offer}\n\n{app_line}" if offer else app_line
 
     custom = ctx.s.get("welcome_text")
     if custom:
@@ -513,9 +519,9 @@ def welcome_text(ctx, user):
         for s in shown:
             left = core.days_left(s.get("expires_at"))
             if left is None:
-                status = "بدون محدودیت زمانی"
+                status = core.pending_text(s) or "بدون محدودیت زمانی"
             elif left <= 0:
-                status = f"{F.b('اعتبارش تمام شده')} — وقت تمدید است"
+                status = f"{F.b('اعتبارش تمام شده')} و باید تمدید شود"
             elif left == 1:
                 status = f"فقط {F.b('امروز')} اعتبار دارد"
             elif left <= 3:
@@ -539,12 +545,12 @@ def welcome_text(ctx, user):
         else:
             lines += [
                 "هنوز مجوزی ندارید.",
-                "با <b>خرید نکسورا Pro</b> شروع کنید — کلید همان لحظه‌ی پرداخت می‌رسد.",
+                "با <b>خرید نکسورا Pro</b> شروع کنید. کلید همان لحظه‌ی پرداخت می‌رسد.",
             ]
     else:
         lines += [
             "هنوز اشتراکی ندارید.",
-            "با <b>خرید اشتراک</b> شروع کنید — کمتر از یک دقیقه طول می‌کشد.",
+            "با <b>خرید اشتراک</b> شروع کنید. کمتر از یک دقیقه طول می‌کشد.",
         ]
 
     wallet_line = []
@@ -658,7 +664,7 @@ def claim_owner(ctx, msg, code):
         return ctx.bot.send(
             chat_id,
             "⚠️ این لینک دیگر معتبر نیست.\n\n"
-            "از پنلِ خودتان دوباره «وصلِ من به ربات» را بزنید — لینک "
+            "از پنلِ خودتان دوباره «وصلِ من به ربات» را بزنید. لینک "
             f"فقط {core.fa(OWNER_CLAIM_MINUTES)} دقیقه و یک‌بار کار می‌کند.")
 
     # سوزاندنِ کد و وصل‌کردن **یک** نوشتنِ شرطی است، نه دو تا.
@@ -754,7 +760,7 @@ def show_plans(ctx, user, chat_id, message_id=None, kind=None, tab=None):
     plans = [p for p in ctx.db.plans() if _sellable(ctx, p)]
     if not plans:
         text = ("فعلاً پلنی برای فروش فعال نیست.\n\n"
-                "به‌زودی برمی‌گردند — اگر عجله دارید به پشتیبانی پیام بدهید.")
+                "به‌زودی برمی‌گردند. اگر عجله دارید، به پشتیبانی پیام بدهید.")
         return _reply(ctx, chat_id, message_id, text, back_kb())
 
     # «رضایت» پیش از خرید — از نظرِ مشتری‌های خودِ همین فروشگاه
@@ -797,15 +803,15 @@ def show_plans(ctx, user, chat_id, message_id=None, kind=None, tab=None):
     prog = core.coin_progress(user["coins"], ctx.s.get("coins"))
     hint = ""
     if prog["current_percent"]:
-        hint = (f"\n\n🪙 <b>{core.fa(prog['coins'])}</b> سکه دارید — "
-                f"<b>{core.fa(prog['current_percent'])}٪ تخفیف</b> روی همین خرید.")
+        hint = (f"\n\n🪙 <b>{core.fa(prog['coins'])}</b> سکه دارید. "
+                f"<b>{core.fa(prog['current_percent'])}٪ تخفیف</b> روی همین خرید اعمال می‌شود.")
     elif prog["next"]:
         hint = (f"\n\n🪙 با <b>{core.fa(prog['next']['need'])}</b> سکه‌ی دیگر، "
                 f"{core.fa(prog['next']['percent'])}٪ تخفیف باز می‌شود.")
 
     _reply(ctx, chat_id, message_id,
            f"🛒 <b>{buy_word(ctx, core.license_only(plans))}</b>" + sat + "\n\n"
-           "پلن مناسبتان را انتخاب کنید — جزئیات کامل و مبلغ را "
+           "پلن مناسبتان را انتخاب کنید. جزئیات و مبلغ را "
            f"در صفحه‌ی بعد می‌بینید.{hint}", kb(rows))
 
 
@@ -863,12 +869,12 @@ def show_plan_detail(ctx, user, chat_id, message_id, plan_id):
         (f"{core.fa(ips)} کاربر" if ips else "کاربرِ نامحدود")]))]
 
     if dwhy:
-        lines += ["", F.quote(f"🎟 کدِ <code>{esc(dbad)}</code> اعمال نشد — "
+        lines += ["", F.quote(f"🎟 کدِ <code>{esc(dbad)}</code> اعمال نشد: "
                               f"{esc(dwhy)}")]
 
     rows = []
     if dpct:
-        lines += ["", f"🎟 کد <code>{esc(dcode)}</code> — "
+        lines += ["", f"🎟 کد <code>{esc(dcode)}</code>: "
                       f"{core.fa(dpct)}٪ تخفیف"]
     if has_coin_discount:
         # قیمت قبلی خط‌خورده کنار قیمت جدید: مشتری خودش مقدار
@@ -876,15 +882,15 @@ def show_plan_detail(ctx, user, chat_id, message_id, plan_id):
         lines += ["", "💰 " + F.price(core.toman(pr["final"]),
                                      old=core.toman(p["price"]))]
         lines.append(F.i(f"🪙 {core.fa(pr['coins_used'])} سکه‌ی شما خرج می‌شود "
-                         f"— {core.fa(pr['coin_percent'])}٪ تخفیف"))
-        rows.append([(f"🪙 خرید با تخفیف — {core.toman(pr['final'])} تومان",
+                         f"({core.fa(pr['coin_percent'])}٪ تخفیف)"))
+        rows.append([(f"🪙 خرید با تخفیف · {core.toman(pr['final'])} تومان",
                       f"chk:{plan_id}:1")])
     else:
         lines += ["", "💰 " + F.price(
             core.toman(plain["final"]),
             old=(core.toman(p["price"]) if dpct else None))]
 
-    rows.append([(f"💳 خرید — {core.toman(plain['final'])} تومان",
+    rows.append([(f"💳 خرید · {core.toman(plain['final'])} تومان",
                   f"chk:{plan_id}:0")])
 
     # دکمه‌ی کد: یا برای واردکردنش، یا برای برداشتنش. هر دو حالت
@@ -896,7 +902,7 @@ def show_plan_detail(ctx, user, chat_id, message_id, plan_id):
     if user["balance"] >= plain["final"]:
         lines.append("")
         lines.append(F.quote(
-            "👛 موجودی کیف پولتان برای این خرید کافی است — با پرداخت از "
+            "👛 موجودی کیف پولتان برای این خرید کافی است. با پرداخت از "
             "کیف پول، " + ("مجوز" if lic else "اشتراک") + " "
             + F.b("بدون معطلی") + " تحویل می‌شود."))
         rows.append([("👛 پرداخت آنی از کیف پول", f"wpay:{plan_id}")])
@@ -957,7 +963,7 @@ def handle_discount(ctx, msg, user, sdata):
     ctx.db.set_held_discount(user["tg_id"], code)
     ctx.db.clear_state(user["tg_id"])
     fresh = ctx.db.get_user(user["tg_id"]) or user
-    ctx.bot.send(chat_id, f"✅ کد پذیرفته شد — <b>{core.fa(pct)}٪</b> تخفیف")
+    ctx.bot.send(chat_id, f"✅ کد پذیرفته شد: <b>{core.fa(pct)}٪</b> تخفیف")
     return show_plan_detail(ctx, fresh, chat_id, None, pid)
 
 
@@ -1285,7 +1291,7 @@ def wallet_pay(ctx, user, chat_id, message_id, plan_id,
         _reply(ctx, chat_id, message_id,
                f"✅ <b>{core.toman(r['spent'])}</b> تومان از کیف پولتان کم شد.\n\n"
                + ("مجوز" if (r.get("sub") or {}).get("license") else "اشتراک")
-               + " آماده است — همین پایین برایتان فرستادیم.", None)
+               + " آماده است. همین پایین برایتان فرستادیم.", None)
         return deliver(ctx, r["user"], r["sub"])
 
     why = r["why"]
@@ -1325,7 +1331,7 @@ def wallet_pay(ctx, user, chat_id, message_id, plan_id,
     return _reply(ctx, chat_id, message_id,
                   "ساخت اشتراک به مشکل خورد و <b>مبلغ کامل به کیف پولتان برگشت</b>.\n\n"
                   f"<i>{esc(r.get('detail') or '')}</i>\n\n"
-                  "<blockquote>چند دقیقه دیگر دوباره امتحان کنید — اگر باز هم "
+                  "<blockquote>چند دقیقه دیگر دوباره امتحان کنید. اگر باز هم "
                   "نشد، پشتیبانی همین را می‌بیند و پیگیری می‌کند."
                   "</blockquote>",
                   back_kb())
@@ -1411,7 +1417,7 @@ def receipt_submit(ctx, user, order_id, rtype, rfile=None, rtext=None,
     info = _receipt_caption(ctx, user, order, rtext)
 
     if uploaded:
-        ctx.notify_group(f"سفارش #{order_id} — تصمیم شما؟",
+        ctx.notify_group(f"سفارش #{order_id}: تصمیم شما؟",
                          keyboard=buttons, topic="receipts")
         return True, None
 
@@ -1434,7 +1440,7 @@ def _receipt_caption(ctx, user, order, rtext):
     if user.get("username"):
         who += f" · @{esc(user['username'])}"
     info = (
-        f"🧾 <b>رسید جدید — سفارش #{order['id']}</b>\n\n"
+        f"🧾 <b>رسید جدید: سفارش #{order['id']}</b>\n\n"
         f"{who}\n"
         f"<code>{user['tg_id']}</code>\n\n"
         f"{esc(plan['name']) if plan else '—'}\n"
@@ -1478,7 +1484,7 @@ def handle_receipt(ctx, msg, user, state_data):
 
     if why == "closed":
         return ctx.bot.send(user["tg_id"],
-                            "این سفارش دیگر باز نیست — شاید قبلاً بررسی "
+                            "این سفارش دیگر باز نیست. شاید قبلاً بررسی "
                             "یا لغو شده باشد.\n\n"
                             "وضعیتش را از «سفارش‌های من» ببینید.",
                             keyboard=main_menu(ctx, user))
@@ -1486,7 +1492,7 @@ def handle_receipt(ctx, msg, user, state_data):
     if why == "expired":
         return ctx.bot.send(user["tg_id"],
                             "⌛️ مهلت این سفارش تمام شد.\n\n"
-                            "اگر واریز کرده‌اید نگران نباشید — "
+                            "اگر واریز کرده‌اید، "
                             "به پشتیبانی پیام بدهید تا دستی ثبت شود.\n"
                             f"وگرنه از «{buy_word(ctx)}» یک سفارش تازه بسازید.",
                             keyboard=main_menu(ctx, user))
@@ -1494,7 +1500,7 @@ def handle_receipt(ctx, msg, user, state_data):
     return ctx.bot.send(
         user["tg_id"],
         "⌛️ درست همین لحظه مهلت این سفارش تمام شد.\n\n"
-        "اگر واریز کرده‌اید نگران نباشید — رسیدتان را برای پشتیبانی "
+        "اگر واریز کرده‌اید، رسیدتان را برای پشتیبانی "
         "بفرستید تا دستی ثبت شود.\n"
         f"وگرنه از «{buy_word(ctx)}» یک سفارش تازه بسازید.",
         keyboard=main_menu(ctx, user))
@@ -1515,7 +1521,7 @@ def _waiting_text(ctx, order_id):
 
     txt = (
         "✅ <b>رسیدتان رسید</b>\n\n"
-        "⏳ الان در صف بررسی است — معمولاً کمتر از <b>۱۵ دقیقه</b>.\n"
+        "⏳ الان در صف بررسی است، معمولاً کمتر از <b>۱۵ دقیقه</b>.\n"
         "📩 به‌محض تأیید، اشتراک همین‌جا برایتان می‌آید.\n\n"
         "<blockquote>لازم نیست منتظر بمانید؛ می‌توانید تلگرام را ببندید.</blockquote>\n\n"
         f"<i>کد پیگیری:</i> <code>#{order_id}</code>"
@@ -1544,7 +1550,7 @@ def show_order_status(ctx, user, chat_id, message_id, order_id):
     labels = {
         "awaiting": ("⏳", "در انتظار بررسی"),
         "review": ("🔍", "در حال بررسی"),
-        "panel_approve": ("⚙️", "تایید شد — در حال ساخت کانفیگ"),
+        "panel_approve": ("⚙️", "تایید شد، در حال ساخت کانفیگ"),
         "approved": ("✅", "تایید شد"),
         "rejected": ("❌", "تایید نشد"),
         "expired": ("⌛️", "منقضی شد"),
@@ -1791,7 +1797,7 @@ def approve_order(ctx, order_id, admin_tg_id):
             + (f"کلید فقط یک‌بار نمایش داده می‌شود: روی سرورِ ناشر "
                f"<code>python -m issuer.cli rekey {esc(lic['id'])}</code> "
                "بزنید و کلیدِ تازه را دستی بفرستید." if lic else
-               "اشتراک در پنل سالم است — لینک را دستی بفرستید."))
+               "اشتراک در پنل سالم است. لینک را دستی بفرستید."))
         return True, result
 
     return True, result
@@ -1893,7 +1899,7 @@ def _provision(ctx, order_id):
         if not group:
             return False, ("این فروشگاه هنوز گروهِ x-ui ندارد. کانفیگِ "
                            "بی‌گروه در صورتحسابِ کسی شمرده نمی‌شود، پس "
-                           "ساخته نشد — مالک باید گروه را تعیین کند")
+                           "ساخته نشد. مالک باید گروه را تعیین کند")
 
     if reseller and not trial and not int(plan.get("gb") or 0):
         # نامحدودِ فروشگاهِ حجمی با سقفِ مالک (`core.unlimited_cap`)
@@ -1996,7 +2002,7 @@ def _provision(ctx, order_id):
                         ctx.tid, charge, f"تمدید {sub.get('client_email')}")
                     if not okc:
                         ctx.db.release_renewal(sub["id"])
-                        return False, (f"اعتبارِ فروشگاه کافی نیست — لازم "
+                        return False, (f"اعتبارِ فروشگاه کافی نیست: لازم "
                                        f"{core.toman(charge)}، موجودی {core.toman(have)} تومان")
                 try:
                     # ایمیل را هم می‌دهیم: در 3x-ui نسخه‌ی ۳ شناسه‌ی
@@ -2011,9 +2017,18 @@ def _provision(ctx, order_id):
                         if charge:
                             DB.refund_credit(
                                 ctx.tid, charge,
-                                "بازگشت — تمدید روی پنل انجام نشد")
+                                "بازگشت: تمدید روی پنل انجام نشد")
                         raise
                     new_exp = _add_days_iso(sub["expires_at"], plan["days"])
+                    # Not started yet (start after first use): 3x-ui added the
+                    # days to the pending duration, so the bot does the same
+                    # and keeps no date until the first connection.
+                    pend = None
+                    xexp = ext.get("expiry_ms") if isinstance(ext, dict) else None
+                    if xexp is not None and int(xexp) < 0:
+                        new_exp, pend = None, -int(xexp) // 86400000
+                    elif not sub.get("expires_at") and sub.get("pending_days"):
+                        new_exp, pend = None, int(sub["pending_days"]) + int(plan["days"] or 0)
 
                     # حجم را از همان چیزی می‌گیریم که روی پنل نشست.
                     #
@@ -2028,11 +2043,11 @@ def _provision(ctx, order_id):
                         new_gb = int(round(ext["total_bytes"] / (1024 ** 3)))
                     ctx.db.exec(
                         """UPDATE subscriptions SET expires_at=?, gb=?,
-                           is_active=1,
+                           is_active=1, pending_days=?,
                            notified_7d=0, notified_3d=0, notified_1d=0,
-                           notified_80p=0
+                           notified_80p=0, ended_at=NULL, notified_del=0
                            WHERE tenant_id=? AND id=?""",
-                        (new_exp, new_gb, ctx.tid, sub["id"])
+                        (new_exp, new_gb, pend, ctx.tid, sub["id"])
                     )
                     ctx.db.exec(
                         "UPDATE orders SET sub_id=? WHERE tenant_id=? AND id=?",
@@ -2040,7 +2055,7 @@ def _provision(ctx, order_id):
                 finally:
                     ctx.db.release_renewal(sub["id"])
                 return True, {**sub, "expires_at": new_exp, "gb": new_gb,
-                              "renewed": True}
+                              "pending_days": pend, "renewed": True}
 
         email = _free_email(ctx, user, prefix)
 
@@ -2069,36 +2084,44 @@ def _provision(ctx, order_id):
         if charge:
             okc, have = DB.charge_credit(ctx.tid, charge, f"ساخت {email}")
             if not okc:
-                return False, (f"اعتبارِ فروشگاه کافی نیست — لازم "
+                return False, (f"اعتبارِ فروشگاه کافی نیست: لازم "
                                f"{core.toman(charge)}، موجودی {core.toman(have)} تومان")
         # گروه فقط برای نماینده فرستاده می‌شود؛ مسیرِ مالک همان است که بود.
         extra = {"group": group} if group else {}
+        # Start after first use (task 9): the days begin on the first
+        # connection, for purchases and trials alike. A shop can turn it off.
+        on_use = core.start_on_use(ctx.s) and bool(plan["days"])
         try:
             res = ctx.xui.create_subscription(
                 inbound, email, plan["gb"], plan["days"],
                 ip_limit=plan["ip_limit"], tg_id=user["tg_id"],
-                sub_base_url=sub_base, inbound_ids=pl_inbounds, **extra,
+                sub_base_url=sub_base, inbound_ids=pl_inbounds,
+                start_on_use=on_use, **extra,
             )
         except Exception:
             if charge:
                 DB.refund_credit(ctx.tid, charge,
-                                 "بازگشت — کار روی پنل انجام نشد")
+                                 "بازگشت: کار روی پنل انجام نشد")
             raise
 
-        exp_iso = None
-        if res["expiry_ms"]:
+        exp_iso, pending = None, None
+        if res["expiry_ms"] and res["expiry_ms"] > 0:
             exp_iso = datetime.fromtimestamp(res["expiry_ms"] / 1000).isoformat(timespec="seconds")
+        elif res["expiry_ms"] and res["expiry_ms"] < 0:
+            # Counts from the first connection; the sweep writes the date then.
+            pending = int(plan["days"] or 0) or None
 
         sid = ctx.db.exec(
             """INSERT INTO subscriptions (tenant_id, user_id, order_id, plan_id,
                                           plan_name, client_email, client_uuid,
-                                          sub_url, inbound_id, gb, expires_at)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+                                          sub_url, inbound_id, gb, expires_at,
+                                          pending_days)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
             # نام پلن همین‌جا ثبت می‌شود، نه فقط شناسه‌اش. اگر مدیر
             # بعداً پلن را حذف یا عوض کند، مشتری همچنان نام چیزی را
             # می‌بیند که واقعاً خریده.
             (ctx.tid, user["id"], order_id, plan["id"], plan["name"], email,
-             res["uuid"], res["sub_url"], inbound, plan["gb"], exp_iso)
+             res["uuid"], res["sub_url"], inbound, plan["gb"], exp_iso, pending)
         )
         ctx.db.exec("UPDATE orders SET sub_id=? WHERE tenant_id=? AND id=?",
                     (sid, ctx.tid, order_id))
@@ -2106,6 +2129,7 @@ def _provision(ctx, order_id):
 
         return True, {"id": sid, "client_email": email, "sub_url": res["sub_url"],
                       "expires_at": exp_iso, "gb": plan["gb"],
+                      "pending_days": pending,
                       "plan_name": plan["name"], "renewed": False,
                       # اگر لینک اشتراک ساخته نشد، دست‌کم خود کانفیگ‌ها
                       # را داریم تا مشتری دست‌خالی نماند
@@ -2177,7 +2201,8 @@ def deliver(ctx, user, sub):
             link=url, brand=ctx.brand(),
             channel=public_channel(ctx),
             plan=str(sub.get("plan_name") or ""), gb=core.fmt_gb(sub.get("gb")),
-            expires=(f"{core.fa(d0)} روز" if d0 is not None else "—"), esc=esc)
+            expires=(f"{core.fa(d0)} روز" if d0 is not None
+                     else core.pending_text(sub) or "—"), esc=esc)
         _chat_copy(ctx, user, text, sub)
         sent = _send_delivery(ctx, user, text, url)
         _trial_converted(ctx, user, sub)
@@ -2197,8 +2222,10 @@ def deliver(ctx, user, sub):
     if d is not None:
         val = f"{core.fa(d)} روز"
         if sub.get("expires_at"):
-            val += f" — تا {core.fa_date(sub['expires_at'])}"
+            val += f" (تا {core.fa_date(sub['expires_at'])})"
         lines.append(F.row("اعتبار", val, "⏳"))
+    elif core.pending_text(sub):
+        lines.append(F.row("اعتبار", core.pending_text(sub), "⏳"))
     if sub.get("client_email"):
         lines += ["", F.section("شناسه‌ی کانفیگ", "🏷"),
                   F.code(sub["client_email"])]
@@ -2229,7 +2256,7 @@ def deliver(ctx, user, sub):
             lines.append(f"<code>{esc(cfg)}</code>")
         lines.append("")
         lines.append("<i>هر کدام را که خواستید کپی کنید و در برنامه‌تان "
-                     "وارد کنید — همه به یک حساب وصل‌اند.</i>")
+                     "وارد کنید. همه به یک حساب وصل‌اند.</i>")
     else:
         # بدون لینک، کاربر نمی‌داند چه کند — پس صریح می‌گوییم
         lines += [
@@ -2297,6 +2324,40 @@ def _chat_copy(ctx, user, html, sub):
         log.debug("کپیِ تحویل در صندوق ناموفق", exc_info=True)
 
 
+def support_reply(ctx, u, body, photo=None, ticket_id=None, stored=False):
+    """
+    The one way a support message reaches a buyer: the panel's inbox, the
+    reseller portal's inbox, the bot's admin "message" and a ticket reply
+    (docs/specs/2026-09-30-vpn-fixes.md, task 4).
+
+    With a mini app the message lives in its chat, and the bot gets one
+    short notice with a button that opens it. The notice is not repeated
+    while a support message is still unread: five replies in a row are one
+    notice, not five full texts cluttering the bot. Without a mini app
+    (Community, or no https domain) the bot is the only place to read it,
+    so the text is sent in full.
+
+    `stored`: the caller already put it in the chat (the panel's inbox).
+    Returns what the bot sent, or None when a notice was already waiting.
+    """
+    if not stored:
+        ctx.db.chat_add(u["id"], "admin", str(body or "")[:2000], photo=photo)
+    app_url = miniapp_url(ctx)
+    if not app_url:
+        txt = "💬 <b>پاسخ پشتیبانی</b>\n\n" + esc(str(body or "📷 عکس"))
+        if ticket_id:
+            txt += (f"\n\n<blockquote>درباره‌ی پیامی که فرستاده بودید، "
+                    f"شماره پیگیری <code>#{ticket_id}</code></blockquote>")
+        return ctx.bot.send(u["tg_id"], txt,
+                            keyboard=kb([[("💬 پاسخ دوباره", "support")],
+                                         [("‹ منوی اصلی", "menu")]]))
+    if ctx.db.chat_unread_from_support(u["id"]) > 1:
+        return None                      # an earlier notice is still unread
+    chat_url = app_url + ("&" if "?" in app_url else "?") + "tab=chat"
+    return ctx.bot.send(u["tg_id"], "💬 پیام تازه‌ای از پشتیبانی دارید.",
+                        keyboard=kb([[("💬 باز کردن گفتگو", chat_url, "web_app")]]))
+
+
 def _chat_notice(ctx, srow, html):
     """
     یادآوری‌ها در صندوقِ مینی‌اپ.
@@ -2350,7 +2411,7 @@ def _send_delivery(ctx, user, text, url):
                     user["tg_id"], png, filename="nexora-sub.png",
                     caption="📷 <b>کیوآر همین لینک</b>\n\n"
                             "<blockquote>در اپ VPN گزینه‌ی افزودن با اسکن را "
-                            "بزنید و این را نشان دوربین بدهید — نیازی به کپی "
+                            "بزنید و این را نشان دوربین بدهید. نیازی به کپی "
                             "کردن لینک نیست.</blockquote>")
         except Exception as e:
             log.warning("ارسال کیوآر ناموفق: %s", e)
@@ -2378,8 +2439,8 @@ def show_subs(ctx, user, chat_id, message_id):
         return _reply(ctx, chat_id, message_id,
                       "📊 <b>اشتراک‌های شما</b>\n\n"
                       "هنوز اشتراکی اینجا نیست.\n\n"
-                      "اولین اشتراکتان کمتر از یک دقیقه طول می‌کشد — "
-                      "پلن را انتخاب می‌کنید، رسید می‌فرستید، تحویل می‌گیرید.",
+                      "اولین اشتراکتان کمتر از یک دقیقه طول می‌کشد: "
+                      "پلن را انتخاب می‌کنید، رسید می‌فرستید و تحویل می‌گیرید.",
                       kb([[("🛒 خرید اشتراک", "buy")], [("‹ بازگشت", "menu")]]))
 
     lines = ["📊 <b>اشتراک‌های شما</b>", ""]
@@ -2435,12 +2496,12 @@ def show_subs(ctx, user, chat_id, message_id):
             lines.append(f"💾 {F.b(f'{core.fa(left_gb)} گیگ')} باقی مانده "
                          f"{F.i(f'({core.fa(used_gb)} از {core.fmt_gb(total_gb)} مصرف شده)')}")
         elif used_gb is not None:
-            lines.append(f"💾 {F.b(f'{core.fa(used_gb)} گیگ')} مصرف شده — حجم نامحدود")
+            lines.append(f"💾 {F.b(f'{core.fa(used_gb)} گیگ')} مصرف شده (حجم نامحدود)")
         else:
             lines.append(f"💾 {core.fmt_gb(total_gb)} ترافیک")
 
         if d is None:
-            lines.append("⏳ بدون محدودیت زمانی")
+            lines.append(f"⏳ {core.pending_text(s) or 'بدون محدودیت زمانی'}")
         elif expired:
             gone = core.days_past(s.get("expires_at"))
             lines.append(
@@ -2449,7 +2510,7 @@ def show_subs(ctx, user, chat_id, message_id):
         else:
             line = f"⏳ {F.b(f'{core.fa(d)} روز')} اعتبار"
             if s.get("expires_at"):
-                line += f" — تا {core.fa_date(s['expires_at'])}"
+                line += f" (تا {core.fa_date(s['expires_at'])})"
             lines.append(line)
 
         if s.get("client_email"):
@@ -2511,9 +2572,9 @@ def show_license(ctx, user, chat_id, message_id, license_id):
                              "لازم نیست روی سرور کاری بکنید."))
         for p in plans:
             if user["balance"] >= p["price"]:
-                rows.append([(f"👛 تمدید از کیف پول — {core.plan_line(p)}",
+                rows.append([(f"👛 تمدید از کیف پول · {core.plan_line(p)}",
                               f"lwp:{p['id']}:{lrow['license_id']}")])
-            rows.append([(f"💳 تمدید — {core.plan_line(p)}",
+            rows.append([(f"💳 تمدید · {core.plan_line(p)}",
                           f"lck:{p['id']}:{lrow['license_id']}")])
     else:
         lines.append(F.quote("فعلاً پلنی برای تمدیدِ این مجوز در فروش نیست؛ "
@@ -2570,15 +2631,15 @@ def show_sub(ctx, user, chat_id, message_id, sub_id):
         lines.append(f"💾 {F.b(f'{core.fa(left)} گیگ')} مانده "
                      f"{F.i(f'({core.fa(used_gb)} از {core.fmt_gb(total)})')}")
     elif used_gb is not None:
-        lines.append(f"💾 {F.b(f'{core.fa(used_gb)} گیگ')} مصرف شده — حجم نامحدود")
+        lines.append(f"💾 {F.b(f'{core.fa(used_gb)} گیگ')} مصرف شده (حجم نامحدود)")
     else:
         lines.append(f"💾 {core.fmt_gb(total)}")
     if d is None:
-        lines.append("⏳ بدون محدودیت زمانی")
+        lines.append(f"⏳ {core.pending_text(s) or 'بدون محدودیت زمانی'}")
     elif expired:
         lines.append(f"⛔ {F.b('منقضی شده')}")
     else:
-        lines.append(f"⏳ {F.b(f'{core.fa(d)} روز')} — تا {core.fa_date(s['expires_at'])}")
+        lines.append(f"⏳ {F.b(f'{core.fa(d)} روز')} (تا {core.fa_date(s['expires_at'])})")
     url = s.get("sub_url") or ""
     if url:
         lines += ["", "🔗 لینک اشتراک:", F.code(url)]
@@ -2586,7 +2647,7 @@ def show_sub(ctx, user, chat_id, message_id, sub_id):
     rows = []
     if url:
         rows.append([("📋 کپی لینک", url, "copy")])
-    rows.append([("⚡ تمدید فوری" if expired else "🔄 تمدید", f"renew:{s['id']}")])
+    rows.append([("⚡ تمدید" if expired else "🔄 تمدید", f"renew:{s['id']}")])
     rows.append([("📚 آموزش نصب", "help"), ("‹ اشتراک‌های من", "mysubs")])
     caption = "\n".join(lines)
 
@@ -2636,7 +2697,7 @@ def show_renew(ctx, user, chat_id, message_id, sub_id):
                            + core.fmt_days(plan["days"]), "📦"))
 
     if left is None:
-        lines.append(F.row("اعتبار", "بدون محدودیت زمانی", "⏳"))
+        lines.append(F.row("اعتبار", core.pending_text(sub) or "بدون محدودیت زمانی", "⏳"))
     elif left <= 0:
         lines.append(F.row("اعتبار", "تمام شده", "⛔"))
     else:
@@ -2652,15 +2713,15 @@ def show_renew(ctx, user, chat_id, message_id, sub_id):
                   F.row("مبلغ تمدید",
                         core.toman(plan["price"]) + " تومان", "💰"), ""]
         lines.append(F.quote(
-            "بعد از تمدید، همین کانفیگ ادامه پیدا می‌کند — لازم نیست "
+            "بعد از تمدید، همین کانفیگ ادامه پیدا می‌کند. لازم نیست "
             "چیزی را در برنامه‌تان عوض کنید."))
         if user["balance"] >= plan["price"]:
             rows.append([("👛 تمدید آنی از کیف پول",
                           f"wpay:{plan['id']}:{sub['id']}")])
-        rows.append([(f"💳 تمدید — {core.toman(plan['price'])} تومان",
+        rows.append([(f"💳 تمدید · {core.toman(plan['price'])} تومان",
                       f"chk:{plan['id']}:0:{sub['id']}")])
     else:
-        lines += ["", "پلن این اشتراک دیگر موجود نیست — از فهرست پلن‌ها "
+        lines += ["", "پلن این اشتراک دیگر موجود نیست. از فهرست پلن‌ها "
                   "یکی انتخاب کنید."]
         rows.append([("🛒 دیدن پلن‌ها", "buy")])
 
@@ -2814,7 +2875,7 @@ def show_coins(ctx, user, chat_id, message_id):
     lines += ["", "<b>پله‌های تخفیف</b>"]
     for t in cs["tiers"]:
         mark = "✅" if u["coins"] >= t["coins"] else "▫️"
-        lines.append(f"{mark} {core.fa(t['coins'])} سکه — "
+        lines.append(f"{mark} {core.fa(t['coins'])} سکه: "
                      f"{core.fa(t['percent'])}٪ تخفیف")
 
     earn = loyalty_on()
@@ -2823,7 +2884,7 @@ def show_coins(ctx, user, chat_id, message_id):
         (f"هر دوستی که با لینک شما بیاید و <b>خرید کند</b>، "
          f"<b>{core.fa(cs['per_referral'])} سکه</b> به شما می‌رسد.") if earn else "",
         "",
-        "<i>سکه‌ها تاریخ انقضا ندارند — می‌توانید جمعشان کنید تا "
+        "<i>سکه‌ها تاریخ انقضا ندارند. می‌توانید جمعشان کنید تا "
         "به پله‌ی بالاتر برسید.</i>"
         if not cs.get("expire_days") else "",
     ]
@@ -2865,20 +2926,19 @@ def show_help(ctx, user, chat_id, message_id):
         F.quote_more(
             F.b("جزئیات هر قدم"),
             "",
-            F.b("اندروید") + " — برنامه‌ی v2rayNG یا Happ را نصب کنید. بالا "
+            F.b("اندروید") + ": برنامه‌ی v2rayNG یا Happ را نصب کنید. بالا "
             "سمت راست علامت + را بزنید و «Import from clipboard» را انتخاب کنید.",
             "",
-            F.b("آیفون") + " — برنامه‌ی Streisand یا Happ. روی + بزنید و "
+            F.b("آیفون") + ": برنامه‌ی Streisand یا Happ. روی + بزنید و "
             "«افزودن از کلیپ‌بورد» را انتخاب کنید.",
             "",
-            F.b("ویندوز") + " — برنامه‌ی v2rayN. از منوی Servers گزینه‌ی "
+            F.b("ویندوز") + ": برنامه‌ی v2rayN. از منوی Servers گزینه‌ی "
             "«Import from clipboard» را بزنید.",
             "",
             "بعد از افزودن، سرور را انتخاب و دکمه‌ی اتصال را بزنید. اگر "
             "وصل نشد، یک سرور دیگر از همان لیست را امتحان کنید.",
         ),
-        F.quote("اگر جایی گیر کردید، از پشتیبانی بپرسید. "
-                "خجالت ندارد، همه اولین بار همین‌طورند."),
+        F.quote("اگر جایی گیر کردید، از پشتیبانی بپرسید."),
     )
     rows = []
     apps = ctx.s.get("apps") or []
@@ -2893,7 +2953,7 @@ def start_support(ctx, user, chat_id, message_id):
     ctx.db.set_state(user["tg_id"], "await_ticket", {})
     _reply(ctx, chat_id, message_id,
            "💬 <b>پشتیبانی</b>\n\n"
-           "مشکل یا سوالتان را در یک پیام بنویسید — هرچه دقیق‌تر، "
+           "مشکل یا سوالتان را در یک پیام بنویسید. هرچه دقیق‌تر باشد، "
            "سریع‌تر حل می‌شود.\n\n"
            "<i>اگر درباره‌ی سفارش است، کد پیگیری‌اش را هم بنویسید.</i>",
            kb([[("✖️ انصراف", "menu")]]))
@@ -2912,7 +2972,7 @@ def handle_ticket(ctx, msg, user):
     ctx.db.clear_state(user["tg_id"])
     ctx.bot.send(user["tg_id"],
                  "✅ <b>پیامتان ثبت شد</b>\n\n"
-                 "پاسخ را همین‌جا در تلگرام می‌گیرید — لازم نیست منتظر بمانید.\n\n"
+                 "پاسخ را همین‌جا در تلگرام می‌گیرید و لازم نیست منتظر بمانید.\n\n"
                  f"<i>شماره پیگیری:</i> <code>#{tid}</code>",
                  keyboard=main_menu(ctx, user))
 
@@ -2969,7 +3029,7 @@ def require_membership(ctx, chat_id, message_id, u, force=False, again="menu"):
         return False
     _reply(ctx, chat_id, message_id,
            "📢 <b>یک قدم مانده</b>\n\n"
-           "برای ادامه، اول در کانال ما عضو شوید — اطلاع‌رسانی قطعی‌ها و "
+           "برای ادامه، اول در کانال ما عضو شوید. اطلاع‌رسانی قطعی‌ها و "
            "تخفیف‌ها همان‌جا منتشر می‌شود.\n\n"
            "بعد از عضویت، دکمه‌ی «عضو شدم» را بزنید.", invite)
     return True
@@ -3129,7 +3189,7 @@ def trial_core(ctx, u):
     return True, result
 
 
-TRIAL_USED_TEXT = ("اشتراک تست رایگان را قبلاً گرفته‌اید — هر حساب فقط یک‌بار "
+TRIAL_USED_TEXT = ("اشتراک تست رایگان را قبلاً گرفته‌اید. هر حساب فقط یک‌بار "
                    "می‌تواند.\n\nبرای ادامه، یکی از پلن‌ها را انتخاب کنید.")
 
 
@@ -3140,7 +3200,7 @@ def _trial_ask(ctx, user, chat_id, message_id, step):
                 [(lbl, f"tinfo:op:{k}") for k, lbl in core.TRIAL_OPERATORS[2:]],
                 [("‹ بازگشت", "menu")]]
         return _reply(ctx, chat_id, message_id,
-                      "🎁 <b>تستِ رایگان</b> — سه سؤالِ کوتاه\n\n"
+                      "🎁 <b>تستِ رایگان</b>: سه سؤالِ کوتاه\n\n"
                       "۱ از ۳ · اینترنتت کدام اپراتور است؟", kb(rows))
     if step == "device_os":
         rows = [[(lbl, f"tinfo:os:{k}") for k, lbl in core.TRIAL_OS[:2]],
@@ -3210,7 +3270,7 @@ def give_trial(ctx, user, chat_id, message_id):
         return _reply(ctx, chat_id, message_id,
                       "ساخت اشتراک تست به مشکل خورد.\n\n"
                       f"<i>{esc(result)}</i>\n\n"
-                      "چند دقیقه دیگر دوباره امتحان کنید — "
+                      "چند دقیقه دیگر دوباره امتحان کنید. "
                       "تست رایگانتان هنوز محفوظ است.", back_kb())
 
     deliver(ctx, u, result)
@@ -3257,7 +3317,7 @@ def order_feedback(ctx, user, chat_id, message_id, kind, ref, answer):
                       core.trial_msg(ctx.s, "trial_msg_8_bad", _journey_name(user),
                                      ctx.brand(), esc=esc), None)
     return _reply(ctx, chat_id, message_id,
-                  f"ممنون از نظرت 🌷 — «{esc(dict(core.TRIAL_POLL_8)[answer])}» ثبت شد.", None)
+                  f"ممنون از نظرت 🌷 «{esc(dict(core.TRIAL_POLL_8)[answer])}» ثبت شد.", None)
 
 
 def trial_poll_kb(question):
@@ -3280,7 +3340,7 @@ def trial_feedback(ctx, user, chat_id, message_id, question, answer):
                       core.trial_msg(ctx.s, "trial_msg_8_bad", _journey_name(user),
                                      ctx.brand(), esc=esc), None)
     return _reply(ctx, chat_id, message_id,
-                  f"ممنون از نظرت 🌷 — «{esc(opts[answer])}» ثبت شد.", None)
+                  f"ممنون از نظرت 🌷 «{esc(opts[answer])}» ثبت شد.", None)
 
 
 FEEDBACK_WHERE = {"trial8": "در تست", "buy": "بعد از خرید", "renew": "بعد از تمدید"}
@@ -3310,7 +3370,7 @@ def handle_trial_problem(ctx, msg, user, sdata=None):
                      f"(<code>{user['tg_id']}</code>)"
                      + (f" · سفارش <code>#{ref}</code>" if ref else "")
                      + f"\n\n{esc(text[:600])}", topic="support")
-    return ctx.bot.send(chat_id, "ممنون که گفتی 🤝 — پشتیبانی بررسی می‌کند و همین‌جا جوابت را می‌دهد.",
+    return ctx.bot.send(chat_id, "ممنون که گفتی 🤝 پشتیبانی بررسی می‌کند و همین‌جا جوابت را می‌دهد.",
                         keyboard=back_kb())
 
 
@@ -3349,7 +3409,7 @@ def ask_phone(ctx, user, chat_id):
         "📱 <b>شماره تماس</b>\n\n"
         "اگر شماره‌تان را ثبت کنید، وقتی مشکلی پیش بیاید سریع‌تر پیدایتان "
         "می‌کنیم و اشتراکتان قابل بازیابی می‌ماند.\n\n"
-        "<i>کاملاً اختیاری است — بدون آن هم می‌توانید خرید کنید.</i>"
+        "<i>اختیاری است و بدون آن هم می‌توانید خرید کنید.</i>"
     )
     ctx.bot.send(chat_id, txt,
                  keyboard=contact_kb("📱 ارسال شماره من", SKIP_PHONE))
@@ -3386,7 +3446,7 @@ def handle_phone(ctx, msg, user):
     if not phone:
         ctx.bot.send(chat_id,
                      "این شماره درست به نظر نمی‌رسد.\n\n"
-                     "ساده‌ترین راه دکمه‌ی پایین است — یا شماره را به شکل "
+                     "ساده‌ترین راه دکمه‌ی پایین است. یا شماره را به شکل "
                      "<code>09121234567</code> بنویسید.",
                      keyboard=contact_kb("📱 ارسال شماره من", SKIP_PHONE))
         return
@@ -3440,7 +3500,7 @@ def admin_orders(ctx, user, chat_id, message_id=None):
     orders = ctx.db.pending_orders()
     if not orders:
         return _reply(ctx, chat_id, message_id,
-                      "✅ صف رسیدها خالی است — همه بررسی شده‌اند.",
+                      "✅ صف رسیدها خالی است. همه بررسی شده‌اند.",
                       back_kb("admin"))
 
     rows = []
@@ -3519,7 +3579,7 @@ def admin_users(ctx, user, chat_id, message_id=None):
     for u in rows_db:
         nm = esc((u.get("first_name") or "بدون نام")[:16])
         un = f" @{esc(u['username'])}" if u.get("username") else ""
-        lines.append(f"{nm}{un} — {core.fa(u.get('coins', 0))} سکه · "
+        lines.append(f"{nm}{un}: {core.fa(u.get('coins', 0))} سکه · "
                      f"{core.toman(u.get('balance', 0))} تومان")
         rows.append([(f"{nm} · {u['tg_id']}", f"adm:u:{u['tg_id']}")])
 
@@ -3596,7 +3656,7 @@ def admin_plans(ctx, user, chat_id, message_id=None):
     for p in plans:
         mark = "🟢" if p.get("is_active") else "⚪️"
         trial = " 🎁" if p.get("is_trial") else ""
-        lines.append(f"{mark} {esc(p['name'])}{trial} — {core.toman(p['price'])} · "
+        lines.append(f"{mark} {esc(p['name'])}{trial} · {core.toman(p['price'])} · "
                      f"{core.fmt_gb(p.get('gb'))} · {core.fmt_days(p.get('days'))}")
 
     lines.append("\n<i>ویرایش پلن‌ها از پنل وب انجام می‌شود.</i>")
@@ -3611,21 +3671,21 @@ def admin_ask_input(ctx, user, chat_id, message_id, kind, target=None):
     prompts = {
         "bc": "📢 <b>پیام همگانی</b>\n\n"
               "متن را بفرستید تا برای <b>همه‌ی کاربران</b> ارسال شود.\n\n"
-              "<i>قبل از ارسال دوباره بخوانیدش — برگشتی ندارد.</i>",
+              "<i>قبل از ارسال دوباره بخوانیدش. برگشتی ندارد.</i>",
         "coin": "🪙 <b>تغییر سکه</b>\n\n"
                 "چند سکه اضافه شود؟\n\n"
-                "<i>برای کسر، عدد را با منها بنویسید — مثلاً</i> <code>-10</code>",
+                "<i>برای کسر، عدد را با منها بنویسید، مثلاً</i> <code>-10</code>",
         "bal": "👛 <b>تغییر موجودی</b>\n\n"
                "چه مبلغی (تومان) اضافه شود؟\n\n"
-               "<i>برای کسر، عدد را با منها بنویسید — مثلاً</i> <code>-50000</code>",
+               "<i>برای کسر، عدد را با منها بنویسید، مثلاً</i> <code>-50000</code>",
         "msg": "💬 <b>پیام به کاربر</b>\n\n"
                "متن پیام را بفرستید تا مستقیم برایش ارسال شود.",
         "ask": "💬 سوالتان از این مشتری را بفرستید.",
         "find": "🔎 نام، یوزرنیم یا آیدی عددی کاربر را بفرستید.",
         "tkreply": "✍️ <b>پاسخ به تیکت</b>\n\n"
                    "متن پاسخ را بفرستید تا مستقیم برای مشتری ارسال شود.\n\n"
-                   "<blockquote>مشتری فقط همین متن را می‌بیند — نه نام شما "
-                   "و نه اینکه از گروه مدیریت فرستاده شده.</blockquote>",
+                   "<blockquote>مشتری فقط همین متن را می‌بیند. نام شما و "
+                   "گروه مدیریت به او نشان داده نمی‌شود.</blockquote>",
     }
     ctx.db.set_state(user["tg_id"], f"adm_{kind}", {"t": target})
     return _reply(ctx, chat_id, message_id,
@@ -3729,7 +3789,7 @@ def admin_input(ctx, user, chat_id, text, state, data):
             amt = int(txt.replace(",", "").replace("،", ""))
         except ValueError:
             return _reply(ctx, chat_id, None,
-                          "عدد معتبر نبود. فقط رقم بنویسید — "
+                          "عدد معتبر نبود. فقط رقم بنویسید، "
                           "مثلاً <code>50</code> یا <code>-10</code>",
                           back_kb("admin"))
 
@@ -3768,12 +3828,12 @@ def admin_input(ctx, user, chat_id, text, state, data):
         u = ctx.db.get_user(int(target))
         if u:
             try:
-                ctx.bot.send(u["tg_id"], f"💬 <b>پیام از پشتیبانی</b>\n\n{esc(txt)}")
+                support_reply(ctx, u, txt)
                 return _reply(ctx, chat_id, None, "✅ پیام رسید.",
                               kb([[("‹ بازگشت", f"adm:u:{target}")]]))
             except TelegramError:
                 return _reply(ctx, chat_id, None,
-                              "❌ نرسید — احتمالاً کاربر ربات را بلاک کرده.",
+                              "❌ نرسید. احتمالاً کاربر ربات را بلاک کرده.",
                               back_kb("adm:users"))
 
     if kind == "tkreply" and target:
@@ -3787,17 +3847,10 @@ def admin_input(ctx, user, chat_id, text, state, data):
             return _reply(ctx, chat_id, None, "کاربر این تیکت پیدا نشد.", back_kb())
 
         try:
-            ctx.bot.send(
-                u["tg_id"],
-                "💬 <b>پاسخ پشتیبانی</b>\n\n"
-                f"{esc(txt)}\n\n"
-                f"<blockquote>درباره‌ی پیامی که فرستاده بودید — "
-                f"شماره پیگیری <code>#{t['id']}</code></blockquote>",
-                keyboard=kb([[("💬 پاسخ دوباره", "support")],
-                             [("‹ منوی اصلی", "menu")]]))
+            support_reply(ctx, u, txt, ticket_id=t["id"])
         except TelegramError:
             return _reply(ctx, chat_id, None,
-                          "❌ نرسید — احتمالاً کاربر ربات را بلاک کرده.",
+                          "❌ نرسید. احتمالاً کاربر ربات را بلاک کرده.",
                           back_kb())
 
         # تیکت بسته می‌شود تا در فهرست «باز» نماند و دو بار جواب نگیرد
@@ -3820,7 +3873,7 @@ def admin_input(ctx, user, chat_id, text, state, data):
             # رد حالا شرطی است: سفارشی که کانفیگ گرفته یا قبلاً رد
             # شده، رد نمی‌شود. گفتن «رد شد» در آن حالت دروغ است.
             return _reply(ctx, chat_id, None,
-                          f"سفارش <code>#{target}</code> رد نشد — یا کانفیگش "
+                          f"سفارش <code>#{target}</code> رد نشد: یا کانفیگش "
                           "ساخته شده، یا قبلاً رد شده بود.\n\n"
                           "وضعیتش را از فهرست سفارش‌ها ببینید.",
                           back_kb("adm:orders"))
@@ -3841,7 +3894,7 @@ def admin_input(ctx, user, chat_id, text, state, data):
                 except TelegramError as _exc:
                     log.warning("admin action side effect: %s", _exc)
         return _reply(ctx, chat_id, None,
-                      "❌ نرسید — احتمالاً کاربر ربات را بلاک کرده.",
+                      "❌ نرسید. احتمالاً کاربر ربات را بلاک کرده.",
                       back_kb("adm:orders"))
 
     return _reply(ctx, chat_id, None,
@@ -3932,7 +3985,7 @@ def _error_alert(update, exc):
 
     lines += ["", f"<code>{esc(type(exc).__name__)}: "
                   f"{esc(str(exc)[:160])}</code>", ""]
-    lines.append("<i>ردپای کامل در لاگ سرور — "
+    lines.append("<i>ردپای کامل در لاگ سرور: "
                  "<code>journalctl -u nexora-bot -n 50</code></i>")
     return "\n".join(lines)
 
@@ -4074,7 +4127,7 @@ def _on_message(ctx, msg):
         return handle_trial_problem(ctx, msg, user, sdata)
     if state == "await_trial_name":
         if not trial_info_save(ctx, user, "real_name", text):
-            return ctx.bot.send(chat["id"], "این اسم خوانده نشد — فقط اسمت را بنویس "
+            return ctx.bot.send(chat["id"], "این اسم خوانده نشد. فقط اسمت را بنویس "
                                             "(۲ تا ۴۰ حرف، بی لینک).", keyboard=back_kb())
         ctx.db.clear_state(user["tg_id"])
         return give_trial(ctx, ctx.db.get_user(user["tg_id"]), chat["id"], None)
@@ -4222,7 +4275,7 @@ def _on_callback(ctx, cq):
                 return ctx.bot.answer_cb(cq["id"], "سفارش پیدا نشد", alert=True)
             ctx.db.set_state(user["tg_id"], "await_receipt", {"order": int(arg)})
             return _reply(ctx, chat_id, mid,
-                          "📤 رسید جدید را بفرستید — عکس یا متن پیامک بانک.",
+                          "📤 رسید جدید را بفرستید (عکس یا متن پیامک بانک).",
                           kb([[("انصراف", "menu")]]))
 
         # ── پنل مدیریت داخل ربات ──
@@ -4268,7 +4321,7 @@ def _on_callback(ctx, cq):
                 if okp:
                     try:
                         ctx.bot.edit_markup(chat_id, mid, keyboard=kb(
-                            [[(f"✅ تایید شد — سفارش #{arg}", f"adm:o:{arg}")]]))
+                            [[(f"✅ سفارش #{arg} تایید شد", f"adm:o:{arg}")]]))
                     except TelegramError as _exc:
                         log.debug("_on_callback step: %s", _exc)
                     ctx.bot.send(chat_id,
@@ -4281,13 +4334,13 @@ def _on_callback(ctx, cq):
                     ctx.bot.send(
                         chat_id,
                         f"⏳ سفارش #{arg} همین حالا از مسیر دیگری در حال "
-                        "پردازش است — چند لحظه صبر کنید و وضعیتش را ببینید.")
+                        "پردازش است. چند لحظه صبر کنید و وضعیتش را ببینید.")
                 else:
                     ctx.bot.send(
                         chat_id,
                         f"❌ <b>ساخت کانفیگ سفارش #{arg} ناموفق بود</b>\n\n"
                         f"{esc(str(res))}\n\n"
-                        "سفارش هنوز در صف بررسی است — بعد از رفع مشکل "
+                        "سفارش هنوز در صف بررسی است. بعد از رفع مشکل "
                         "دوباره تایید بزنید.")
                 return None
             # از ادمین دلیل می‌پرسیم — رد بدون توضیح، مشتری را سردرگم
@@ -4329,7 +4382,7 @@ def _on_callback(ctx, cq):
                 # چیزی به مشتری نرفت
                 ctx.bot.answer_cb(
                     cq["id"],
-                    "رد نشد — یا کانفیگش ساخته شده یا قبلاً رد شده بود.",
+                    "رد نشد: یا کانفیگش ساخته شده یا قبلاً رد شده بود.",
                     alert=True)
             return ctx.bot.edit_markup(chat_id, mid, None)
 
@@ -4379,7 +4432,7 @@ def do_reject(ctx, order_id, admin_tg_id, reason):
         if o.get("coins_used"):
             txt += (f"🪙 <b>{core.fa(o['coins_used'])}</b> سکه‌ای که خرج شده بود "
                     "به حسابتان برگشت.\n\n")
-        txt += ("نگران نباشید — رسید درست را دوباره بفرستید تا سریع بررسی شود.\n\n"
+        txt += ("رسید درست را دوباره بفرستید تا سریع بررسی شود.\n\n"
                 f"<i>کد پیگیری:</i> <code>#{order_id}</code>")
 
     rows = [[("🔄 ارسال مجدد رسید", f"retry:{order_id}")]]
@@ -4469,7 +4522,7 @@ def send_expiry_notice(tenant, bot, sub, days_left):
         F.lines(
             "اگر تمدید نکنید، اتصالتان قطع می‌شود.",
             "تمدید یک دکمه است و کانفیگ فعلی‌تان " + F.b("همان می‌ماند") +
-            " — لازم نیست چیزی را دوباره اضافه کنید.",
+            " و لازم نیست چیزی را دوباره اضافه کنید.",
         ),
     )
     _chat_notice(ctx, srow, txt)
@@ -4477,6 +4530,29 @@ def send_expiry_notice(tenant, bot, sub, days_left):
         bot.send(sub["tg_id"], txt, keyboard=renew_kb)
     except TelegramError as e:
         log.warning("یادآوری ارسال نشد (%s): %s", sub["tg_id"], e)
+
+
+def send_delete_notice(tenant, bot, sub):
+    """
+    The day before the sweep deletes a config that ended and was not renewed
+    (docs/specs/2026-09-30-vpn-fixes.md, task 9). The renew button keeps the
+    same config, so the buyer adds nothing again.
+    """
+    ctx = Ctx(bot, tenant)
+    srow = {k: sub[k] for k in sub.keys()} if hasattr(sub, "keys") else dict(sub)
+    label = ctx.sub_label(srow)
+    txt = F.join(
+        F.title("فردا این اشتراک پاک می‌شود", "🗑"),
+        f"📦 {F.b(label)}",
+        F.lines(
+            "اعتبارش تمام شده و هنوز تمدید نشده.",
+            "اگر تا فردا تمدید کنید همین کانفیگ می‌ماند و لازم نیست چیزی را دوباره اضافه کنید.",
+        ),
+    )
+    _chat_notice(ctx, srow, txt)
+    return bot.send(srow.get("tg_id"), txt,
+                    keyboard=kb([[(f"🔄 تمدید · {label}", f"renew:{srow['id']}")],
+                                 [("‹ منوی اصلی", "menu")]]))
 
 
 def send_traffic_notice(tenant, bot, sub, used_gb, total_gb):
@@ -4521,7 +4597,7 @@ def send_traffic_notice(tenant, bot, sub, used_gb, total_gb):
             F.row("مصرف‌شده", f"{core.fa(used_gb)} از {core.fmt_gb(total_gb)}", "💾"),
             F.row("باقی‌مانده", f"{core.fa(left_gb)} گیگ", "🟢"),
         ),
-        F.quote("وقتی حجم تمام شود اتصال قطع می‌شود — حتی اگر تاریخ "
+        F.quote("وقتی حجم تمام شود اتصال قطع می‌شود، حتی اگر تاریخ "
                 "اشتراکتان هنوز باقی باشد."),
     )
     renew_cb = f"renew:{srow['id']}" if srow.get("id") else "mysubs"
@@ -4629,7 +4705,7 @@ def auto_renew_subscription(tenant, bot, sub):
                              F.row("کسری", core.toman(short) + " تومان", "➖"),
                          ),
                          F.quote("کیف پول را شارژ کنید تا دفعه‌ی بعد خودکار "
-                                 "انجام شود — تمدید خودکارتان هنوز روشن است."),
+                                 "انجام شود. تمدید خودکارتان هنوز روشن است."),
                      ),
                      keyboard=kb([[("👛 شارژ کیف پول", "wallet")],
                                   [("📊 اشتراک‌های من", "mysubs")]]))
@@ -4690,7 +4766,7 @@ def auto_renew_subscription(tenant, bot, sub):
                          ),
                          f"💰 {F.b(core.toman(plan['price']) + ' تومان')} "
                          "از کیف پول کم شد.",
-                         F.quote("کاری لازم نیست بکنید — کانفیگ فعلی‌تان "
+                         F.quote("کاری لازم نیست بکنید. کانفیگ فعلی‌تان "
                                  "همان است و وصل می‌ماند."),
                      ),
                      keyboard=kb([[("📊 اشتراک‌های من", "mysubs")]]))
@@ -4703,7 +4779,7 @@ def auto_renew_subscription(tenant, bot, sub):
         # دو جا می‌ماند. برگشت هم به سفارش گره می‌خورد؛ قبلاً
         # order_id نمی‌گرفت و در دفتر پیدا نمی‌شد.
         ctx.db.close_order(order["id"], "rejected",
-                           "بازگشت وجه — تمدید خودکار ناموفق")
+                           "بازگشت وجه: تمدید خودکار ناموفق")
 
         # همان خطا هر ساعت تکرار می‌شود. بدون شمردن، گروه مدیریت
         # شبانه‌روز یک پیام را می‌گیرد و هشدارِ واقعیِ بعدی گم می‌شود.

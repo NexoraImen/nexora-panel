@@ -81,6 +81,11 @@ export const BOT_BEHAVIOUR = [
   { k: "trial_enabled", type: "bool", def: false, label: "اشتراک تست رایگان",
     hint: "هر کاربر یک بار می‌تواند بگیرد" },
   // پیش از لینکِ تست (docs/specs/2026-09-27-shop-funnel.md) — پیش‌فرض روشن
+  { k: "start_on_first_use", type: "bool", def: true, label: "شروع از اولین اتصال",
+    hint: "روزهای کانفیگ از وقتی شمرده می‌شود که مشتری اولین بار وصل شود، نه از لحظه‌ی خرید" },
+  { k: "delete_expired_days", type: "num", def: 5, min: 0, max: 90,
+    label: "پاک‌کردن کانفیگِ تمدیدنشده", unit: "روز",
+    hint: "چند روز بعد از تمام‌شدن، کانفیگی که ربات ساخته پاک شود. یک روز قبلش به مشتری خبر می‌دهیم. ۰ یعنی هرگز" },
   { k: "trial_ask_info", type: "bool", def: true, label: "سه سؤال پیش از تست",
     hint: "اپراتور و دستگاه با دکمه، و اسم — در ربات و مینی‌اپ. جواب‌ها در «کاربران» دیده می‌شوند" },
   { k: "trial_journey", type: "bool", def: true, label: "پیگیریِ تست (۸، ۱۶ و ۲۴ ساعت)",

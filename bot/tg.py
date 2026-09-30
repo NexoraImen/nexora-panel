@@ -361,7 +361,12 @@ def kb(rows):
                 # مثل url، دکمه‌ی نامعتبر حذف می‌شود نه فرستاده.
                 if not data or not str(data).lower().startswith("https://"):
                     continue
-                line.append({"text": text, "web_app": {"url": str(data)}})
+                btn = {"text": text, "web_app": {"url": str(data)}}
+                # Colour too: the mini app button is the one the owner wants
+                # every buyer to notice (task 6).
+                if len(item) > 3 and item[3] in ("success", "primary", "danger"):
+                    btn["style"] = item[3]
+                line.append(btn)
             elif kind == "copy":
                 # دکمه‌ی کپی تلگرام: با یک ضربه متن در کلیپ‌بورد
                 # می‌نشیند. برای لینک اشتراک بهترین حالت است — کاربر

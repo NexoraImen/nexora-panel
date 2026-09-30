@@ -916,7 +916,7 @@ class XUI:
 
     def create_subscription(self, inbound_id, email, gb, days, ip_limit=2,
                             tg_id=None, sub_base_url=None, inbound_ids=None,
-                            group=None):
+                            group=None, start_on_use=False):
         """
         ساخت اشتراک کامل و برگرداندن اطلاعات لازم برای ارسال به مشتری.
 
@@ -926,7 +926,8 @@ class XUI:
         sub_id = self.make_sub_id(email)
         client = self.add_client(inbound_id, email, gb=gb, days=days,
                                  ip_limit=ip_limit, tg_id=tg_id, sub_id=sub_id,
-                                 inbound_ids=inbound_ids, group=group)
+                                 inbound_ids=inbound_ids, group=group,
+                                 start_on_use=start_on_use)
 
         sub_url = None
         configs = []
@@ -1003,8 +1004,14 @@ class XUI:
 
         now_ms = int(time.time() * 1000)
         cur_exp = int(current.get("expiryTime") or 0)
-        base = cur_exp if cur_exp > now_ms else now_ms
-        new_exp = base + add_days * 86400 * 1000 if add_days else cur_exp
+        if cur_exp < 0:
+            # Not started yet ("start after first use": a negative expiryTime
+            # is a duration). Add to the duration. Counting from today, as
+            # below, took away every day the buyer had not used yet.
+            new_exp = cur_exp - add_days * 86400 * 1000 if add_days else cur_exp
+        else:
+            base = cur_exp if cur_exp > now_ms else now_ms
+            new_exp = base + add_days * 86400 * 1000 if add_days else cur_exp
 
         changes = {"expiryTime": new_exp, "enable": True}
         total_bytes = int(current.get("totalGB") or 0)

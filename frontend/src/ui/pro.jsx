@@ -141,6 +141,34 @@ export function ProUnavailable() {
 // must act. One line, above every section, until it is fixed.
 const BANNER = { grace: "warn", clock: "danger", wrong_machine: "danger" };
 
+/**
+ * The UI is older (or newer) than the server. After `nexora update` the
+ * backend moved to the new version while the build of the UI did not
+ * finish, so the owner looked at the old panel, found the new cards
+ * missing, and nothing said why (docs/specs/2026-09-30-vpn-fixes.md, task 10).
+ */
+export function StaleBuildBanner() {
+  const [srv, setSrv] = useState("");
+  useEffect(() => {
+    let alive = true;
+    fetch(`${API_URL}/api/admin/ping`).then((r) => okJson(r, "ping"))
+      .then((j) => { if (alive) setSrv(String((j && j.version) || "")); })
+      .catch(() => { /* the ping gate already reported a dead server */ });
+    return () => { alive = false; };
+  }, []);
+  // eslint-disable-next-line no-undef
+  const built = typeof __NX_BUILD__ !== "undefined" ? __NX_BUILD__ : "";
+  if (!srv || srv === "?" || !built || srv === built) return null;
+  return (
+    <div className="fx-card p-3 mb-4 text-[13px]" role="alert"
+      style={{ background: "var(--warn-wash)", borderColor: "var(--warn-line)", color: "var(--warn)" }}>
+      ظاهرِ پنل (نسخه‌ی {built}) با خودِ سرور (نسخه‌ی {srv}) یکی نیست؛ یعنی ساختنِ ظاهر در
+      به‌روزرسانی کامل نشده. روی سرور <code dir="ltr">nexora rebuild</code> را بزنید و بعد صفحه را
+      با Ctrl+Shift+R تازه کنید.
+    </div>
+  );
+}
+
 export function LicenseBanner({ password }) {
   const lic = useLicense(password);
   const tone = lic && BANNER[lic.state];

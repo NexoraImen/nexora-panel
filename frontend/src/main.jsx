@@ -233,6 +233,8 @@ function Booting({ phase, note, onRetry, slow }) {
  */
 const SPLASH_MS = 1700;
 const EXIT_MS = 380;
+/* The longest the boot splash waits for the mini app's first data. */
+const APP_WAIT_MS = 8000;
 
 const reload = () => { try { window.location.reload(); } catch { /* */ } };
 
@@ -246,6 +248,21 @@ function Gate({ children }) {
   const [phase, setPhase] = React.useState(skip ? "in" : "load");
   const [err, setErr] = React.useState("");
   const [ready, setReady] = React.useState(false);
+  // The mini app loads its data after its code arrives, and showed its own
+  // splash meanwhile: the buyer saw this splash fade out and the same splash
+  // start over (docs/specs/2026-09-30-vpn-fixes.md, task 2). So for the
+  // mini app this one stays on top, over the mounting app, until the app
+  // says it has something to show (`nx-app-ready`), with a cap so a slow
+  // answer never holds the screen.
+  const waitApp = WHICH === "mini" && !skip;
+  const [appReady, setAppReady] = React.useState(!waitApp);
+  React.useEffect(() => {
+    if (!waitApp) return undefined;
+    const on = () => setAppReady(true);
+    window.addEventListener("nx-app-ready", on);
+    const cap = setTimeout(on, APP_WAIT_MS);
+    return () => { window.removeEventListener("nx-app-ready", on); clearTimeout(cap); };
+  }, [waitApp]);
   const [slow, setSlow] = React.useState(false);
   const t0 = React.useRef(Date.now());
 
@@ -269,17 +286,30 @@ function Gate({ children }) {
   // ۳+۴. کف، بعد خروج — فقط وقتی تکه رسیده. خروجِ نرم پیش از رسیدن یعنی
   // صفحه محو می‌شد و همان اسپلش دوباره از Suspense بالا می‌آمد.
   React.useEffect(() => {
-    if (skip || err || !ready) return undefined;
+    if (skip || err || !ready || !appReady) return undefined;
     const wait = Math.max(0, SPLASH_MS - (Date.now() - t0.current));
     const a = setTimeout(() => setPhase("done"), wait);
     const b = setTimeout(() => setPhase("in"), wait + EXIT_MS);
     return () => { clearTimeout(a); clearTimeout(b); };
-  }, [skip, err, ready]);
+  }, [skip, err, ready, appReady]);
 
   if (err) {
     return <Booting phase="error" note={err} onRetry={reload} />;
   }
   if (phase === "in" && (ready || skip)) return children;
+  if (ready && waitApp) {
+    // The app mounts underneath and fetches; this splash covers it and
+    // fades out over it, so there is one splash, not two.
+    return (
+      <>
+        {children}
+        <div className="nx-boot-over">
+          <Booting phase={phase === "in" ? "load" : phase} note="در حال آماده‌سازی…"
+            onRetry={reload} />
+        </div>
+      </>
+    );
+  }
   return <Booting phase={phase === "in" ? "load" : phase} note="در حال آماده‌سازی…"
     slow={slow && !ready ? SLOW_NOTE : ""} onRetry={reload} />;
 }

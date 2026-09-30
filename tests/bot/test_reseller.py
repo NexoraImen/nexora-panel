@@ -101,7 +101,7 @@ class FakeXUI:
 
     def create_subscription(self, inbound_id, email, gb, days, ip_limit=2,
                             tg_id=None, sub_base_url=None, inbound_ids=None,
-                            group=None):
+                            group=None, start_on_use=False):
         if not self.base:
             # همان چیزی که XUI واقعی با آدرسِ خالی می‌کند: به هیچ‌جا
             raise H.XUIError("no panel url")

@@ -44,8 +44,14 @@
     // `shop` همان است که ربات در نشانیِ واقعی می‌گذارد (handlers.miniapp_url)؛
     // بی آن، بارِ اولِ بی‌کش — پرسیدنِ برند پیش از اولین فریم — در هارنس
     // هیچ‌وقت اجرا نمی‌شد و فقط روی گوشیِ مشتری دیده می‌شد
-    else if (as === "mini") history.replaceState({}, "",
-      /^\d{1,9}$/.test(qs.get("shop") || "") ? "/app?shop=" + qs.get("shop") : "/app");
+    // `tab=chat` too: the bot's "new message from support" button opens
+    // /app?...&tab=chat, and dropping it here hid that path from the harness
+    else if (as === "mini") {
+      var _mq = [];
+      if (/^\d{1,9}$/.test(qs.get("shop") || "")) _mq.push("shop=" + qs.get("shop"));
+      if (qs.get("tab") === "chat") _mq.push("tab=chat");
+      history.replaceState({}, "", "/app" + (_mq.length ? "?" + _mq.join("&") : ""));
+    }
     else if (as === "aff") history.replaceState({}, "", "/aff");
 
     /* پوسته‌ی تلگرام:  ?scheme=dark  یا  ?scheme=light
@@ -10112,7 +10118,10 @@
     return out;
   }
   function _bad(i) { return _lq !== "ok" && i >= 230 && i < 254; }
-  var LINK_DIAG = { loopError: null, nodes: [
+  // every/choices/lastAt: the owner-set schedule (hourly by default; it ran
+  // every minute and loaded the servers).
+  var LINK_DIAG = { loopError: null, every: 3600, choices: [900, 1800, 3600, 10800, 21600, 43200],
+    lastAt: "2026-09-30T11:02:00", nodes: [
     { id: 1, name: "تهران-۱", kind: "panel", ip: "198.51.100.7", hasAgent: true, engine: "backhaul",
       online: true, agentVersion: "1.6.0", agentStale: false,
       agentNeed: "1.6.0", tunnels: 2, peers: ["203.0.113.9"],
@@ -10596,6 +10605,10 @@ var D_CODES = { ready: true,
     ] };
 
   var GB = 1024 * 1024 * 1024;
+  // ?subs=N: a buyer with a long history (tests, expired months, one waiting
+  // for its first connection). With three, the home screen and the
+  // subscriptions tab never showed what a real returning buyer sees.
+  var N_SUBS = Math.max(3, Math.min(60, parseInt(Q0.get("subs") || "3", 10) || 3));
   var M_SUBS = { subs: mk(3, function (i) {
     var tot = [50 * GB, 100 * GB, 50 * 1024 * 1024][i];
     var use = [32 * GB, 8 * GB, 61.2 * 1024 * 1024][i];
@@ -10611,6 +10624,17 @@ var D_CODES = { ready: true,
              daysLeft: [26, 78, -3][i],
              subUrl: "https://sub.example.com/s" + i };
   }) };
+  for (var _si = 3; _si < N_SUBS; _si++) {
+    var _pend = _si === 3;             // one waits for its first connection
+    var _old = _si > 4;                // the rest are past months, ended
+    M_SUBS.subs.unshift({ id: _si + 1, plan: _pend ? "پلن یک‌ماهه — آلمان پرسرعت" : "پلن ماهانه " + _si,
+      email: "nexora_1278109787_" + (9605 + _si), gb: 50, usedGB: _pend ? 0 : 50,
+      usagePct: _pend ? 0 : 100, totalBytes: 50 * GB, usedBytes: _pend ? 0 : 50 * GB,
+      remainBytes: _pend ? 50 * GB : 0, months: 1, isTrial: false,
+      active: !_old, expiryJalali: _pend ? null : "۱۴۰۴/۰۳/۰" + (_si % 9 + 1),
+      daysLeft: _pend ? null : (_old ? -40 - _si : 12), pendingDays: _pend ? 30 : null,
+      subUrl: "https://sub.example.com/s" + _si });
+  }
   // دو نوع و تب‌های مدتی که فروشگاه خودش ساخته (۱.۱۱۹) — با یک نوع و یک تب،
   // بخش‌بند و چیپ‌ها اصلاً دیده نمی‌شدند
   var M_PLANS = { satisfaction: Q0.get("sat") === "0" ? null : { n: 118, pct: 86 }, plans: [
@@ -10716,6 +10740,13 @@ var D_CODES = { ready: true,
     { id: 5, from: "admin", body: "", photo: FAKE_SHOT,
       orderId: null, at: "2026-09-17 11:18:00", read: true },
   ] };
+  // ?msgs=N: a long conversation. With five messages the chat never
+  // overflowed, so its scroll box was never exercised.
+  for (var _mi = 0; _mi < Math.min(200, parseInt(Q0.get("msgs") || "0", 10) || 0); _mi++) {
+    M_INBOX.messages.push({ id: 6 + _mi, from: _mi % 3 ? "user" : "admin",
+      body: "پیام " + (_mi + 1) + " — متنی به اندازه‌ی یک پیامِ معمولی برای بلندکردن گفتگو",
+      orderId: null, at: "2026-09-17 12:" + String(10 + _mi % 50) + ":00", read: true });
+  }
 
   var M_PING = { unread: 1, openOrders: 1, subs: 3 };
 
@@ -10765,7 +10796,10 @@ var D_CODES = { ready: true,
     if (u.indexOf("/admin/panel-path") >= 0) {
       return { path: "k7p2m9x4qa3wd8nv5tzr", url: "https://panel.example.com/k7p2m9x4qa3wd8nv5tzr/" };
     }
-    if (u.indexOf("/admin/ping") >= 0) return { ok: true };
+    // ?stale=1: the server is on a newer version than this UI build, the
+    // state `nexora update` left when its build step did not finish
+    if (u.indexOf("/admin/ping") >= 0)
+      return { ok: true, version: Q0.get("stale") === "1" ? "9.9.9" : (typeof __NX_BUILD__ !== "undefined" ? __NX_BUILD__ : "") };
     if (u.indexOf("/aff/login") >= 0) {
       var ac = String((body || {}).code || "").toUpperCase();
       if (ac !== "AFF1") { var ae2 = new Error("کد یا رمز نادرست است"); ae2.status = 401; throw ae2; }

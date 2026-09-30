@@ -1719,6 +1719,10 @@ body.fx-calm *, body.fx-calm *::before, body.fx-calm *::after {
    است و در همان لحظه‌ی خروج، وقتی اپ هم دارد بالا می‌آید، اجرا می‌شد. محو +
    کمی کوچک‌شدن همان حس را دارد. */
 .nx-splash.done { opacity: 0; transform: scale(.985); pointer-events: none; }
+/* The boot splash over the mounting mini app (main.jsx `Gate`): one splash
+   until the app has data, then it fades out over it. */
+.nx-boot-over { position: fixed; inset: 0; z-index: 9998; }
+.nx-boot-over .nx-splash { min-height: 100%; }
 
 /* ── نورِ محیطی ──
    دو لکه‌ی بسیار محو که آرام جابه‌جا می‌شوند. هدف عمق است، نه
@@ -3187,8 +3191,10 @@ body.fx-calm *, body.fx-calm *::before, body.fx-calm *::after {
 /* روی دسکتاپ هم همین — نه فقط موبایل.
    قاعده هیچ مدیا-کوئری‌ای ندارد: مشکلِ «صفحه بلند می‌شود و باید
    برگردی» به اندازه‌ی صفحه ربطی نداشت، به نداشتنِ کرانِ لاگ داشت. */
+/* `--mn-vh` is measured in pixels (mini.jsx, from Telegram's viewport);
+   `100dvh` alone left older Android WebViews without any height. */
 :root[data-mn-tab="chat"] .mn-app {
-  height: 100dvh; max-height: 100dvh; overflow: hidden;
+  height: var(--mn-vh, 100vh); max-height: var(--mn-vh, 100vh); overflow: hidden;
 }
 :root[data-mn-tab="chat"] .mn-body { flex: 1 1 auto; min-height: 0; overflow: hidden; }
 
@@ -4895,6 +4901,8 @@ body::before {
 .ld-chip.t-lossy { color: var(--warn); background: var(--warn-soft); border-color: var(--warn-line); }
 .ld-chip.t-down { color: var(--danger); background: var(--danger-soft); border-color: var(--danger-line); }
 .ld-chip.t-unknown, .ld-chip.t-neutral { color: var(--muted); background: var(--surface-3); }
+/* a probe the firewall dropped while the tunnel is live: not a fault */
+.ld-chip.t-blocked { color: var(--dim); background: var(--surface-3); border-style: dashed; }
 
 .ld-verdict { display: flex; gap: 12px; align-items: flex-start; padding: 14px 16px; border-radius: 14px;
   border: 1px solid var(--border); background: var(--surface-2); margin-bottom: 16px; }
@@ -5732,3 +5740,19 @@ button.mn-pend-row:active { transform: scale(.99); }
 .aff-settle-rej { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--danger);
   margin-bottom: 8px; }
 @media (max-width: 640px) { .aff-settle-form { grid-template-columns: minmax(0, 1fr); } }
+
+/* ── Card grids: no half-empty last row (docs/specs/2026-09-30-vpn-fixes.md, task 7)
+   Measured on the harness with getBoundingClientRect: on nine pages a card
+   sat alone in the last row and left 50-68% of it empty (FAQ, portal tiles,
+   channel tips, nodes, inbound advice, traffic, the bot's inbound picker).
+   Two-column grids give a lone last card the whole row; the auto-fit ones
+   become wrapping rows whose last row stretches. Forms, charts and palettes
+   keep their grids: a short last row is right there. */
+.fx-g2-even > :last-child:nth-child(odd),
+.tr-grid > :last-child:nth-child(odd),
+.fx-pair > :last-child:nth-child(odd) { grid-column: 1 / -1; }
+.rf-tiles, .ch-tips, .ib-recs, .fx-wrap-cards { display: flex; flex-wrap: wrap; }
+.rf-tiles > * { flex: 1 1 230px; }
+.ch-tips > * { flex: 1 1 220px; }
+.ib-recs > * { flex: 1 1 300px; min-width: 0; }
+.fx-wrap-cards > * { flex: 1 1 300px; min-width: 0; }

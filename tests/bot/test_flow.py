@@ -109,15 +109,25 @@ class FakeBot:
 # ═══════════════ شبیه‌ساز پنل 3x-ui ═══════════════
 class FakeXUI:
     """شبیه‌ساز پنل 3x-ui با همان امضای واقعی."""
+    NEG = False
+    LAST_ON_USE = None
 
     def __init__(self, *a, **kw):
         self.created = []
         self.extended = []
 
     def create_subscription(self, inbound_id, email, gb, days, ip_limit=2,
-                            tg_id=None, sub_base_url=None, inbound_ids=None):
+                            tg_id=None, sub_base_url=None, inbound_ids=None,
+                            start_on_use=False):
         self.created.append(email)
+        FakeXUI.LAST_ON_USE = start_on_use
         base = sub_base_url or "https://sub.nexora.test/sub"
+        # Like 3x-ui: "start after first use" answers with a negative
+        # duration. Off by default here so older checks keep their dates.
+        if FakeXUI.NEG and start_on_use and days:
+            return {"email": email, "uuid": f"uuid-{len(self.created)}", "sub_id": email,
+                    "sub_url": f"{base.rstrip('/')}/{email}", "configs": [],
+                    "expiry_ms": -int(days) * 86400000, "gb": gb}
         return {
             "email": email,
             "uuid": f"uuid-{len(self.created)}",
@@ -1824,6 +1834,105 @@ check("ثبتِ رویداد خطا بالا نمی‌برد",
 check("و جدول سقف دارد",
       "DELETE FROM events" in _logfn and "EVENT_MAX_ROWS" in _logfn,
       f"سقف {_EV.MAX_ROWS} ردیف در هر مستاجر")
+
+
+# ── Start after first use (docs/specs/2026-09-30-vpn-fixes.md, task 9) ──
+section("شروع از اولین اتصال")
+_otg = 88001
+D.create_user(_otg, None, "on-use")
+D.exec("UPDATE users SET balance=10000000 WHERE tenant_id=? AND tg_id=?", (tid, _otg))
+FakeXUI.NEG = True
+_ro = H.wallet_purchase(H.Ctx(bot, tenant), D.get_user(_otg), plan["id"])
+_so = D.q("SELECT * FROM subscriptions WHERE tenant_id=? AND user_id=? ORDER BY id DESC",
+          (tid, D.get_user(_otg)["id"]), one=True)
+check("خرید با «شروع از اولین اتصال» ساخته می‌شود (پیش‌فرض روشن)",
+      _ro.get("ok") and FakeXUI.LAST_ON_USE is True, _ro.get("why"))
+check("تاریخ ندارد و روزهایش در انتظارِ اولین اتصال است",
+      _so and not _so["expires_at"] and _so["pending_days"] == plan["days"], dict(_so or {}))
+_wo = H.welcome_text(H.Ctx(bot, tenant), D.get_user(_otg))
+check("خوش‌آمد می‌گوید «از اولین اتصال»، نه «بدون محدودیت زمانی»",
+      "از اولین اتصال" in _wo and "بدون محدودیت زمانی" not in _wo, _wo[-120:])
+_rr = H.wallet_purchase(H.Ctx(bot, tenant), D.get_user(_otg), plan["id"], renew_sub_id=_so["id"])
+_so2 = D.q("SELECT * FROM subscriptions WHERE tenant_id=? AND id=?", (tid, _so["id"]), one=True)
+check("تمدیدِ شروع‌نشده روزها را جمع می‌کند و هنوز تاریخ ندارد",
+      _rr.get("ok") and _so2["pending_days"] == 2 * plan["days"] and not _so2["expires_at"],
+      dict(_so2))
+_st = db.tenant_settings(tid)
+_st["start_on_first_use"] = False
+db.save_tenant_settings(tid, _st)
+H.wallet_purchase(H.Ctx(bot, db.get_tenant(tid)), D.get_user(_otg), plan["id"])
+check("خاموش‌کردنش در تنظیمات: از همان لحظه شمرده می‌شود",
+      FakeXUI.LAST_ON_USE is False)
+_st["start_on_first_use"] = True
+db.save_tenant_settings(tid, _st)
+FakeXUI.NEG = False
+
+
+# ── Support replies (docs/specs/2026-09-30-vpn-fixes.md, task 4) ──
+section("پاسخ پشتیبانی: یک راه، ربات شلوغ نشود")
+_stg = 88002
+D.create_user(_stg, None, "support")
+_su = D.get_user(_stg)
+_sent_to = lambda: [m for m in SENT if m["to"] == _stg]
+
+SENT.clear()
+H.support_reply(H.Ctx(bot, db.get_tenant(tid)), _su, "جواب اول")
+_nomini = _sent_to()
+check("بی مینی‌اپ: متنِ کامل در ربات می‌آید (جای دیگری برای خواندنش نیست)",
+      len(_nomini) == 1 and "جواب اول" in _nomini[0]["text"], _nomini[:1])
+check("و در صندوق هم ثبت می‌شود",
+      any(m["body"] == "جواب اول" and m["sender"] == "admin" for m in D.chat_list(_su["id"])))
+
+_old_pro = H.pro_allowed
+H.pro_allowed = lambda f: True
+_st = db.tenant_settings(tid)
+_st["miniapp_url"] = "https://panel.example/app"
+db.save_tenant_settings(tid, _st)
+D.exec("UPDATE chat_messages SET read_at=CURRENT_TIMESTAMP WHERE tenant_id=? AND user_id=?",
+       (tid, _su["id"]))
+D.chat_add(_su["id"], "system", "یادآوری: ۳ روز مانده")      # never read
+SENT.clear()
+for _k in range(3):
+    H.support_reply(H.Ctx(bot, db.get_tenant(tid)), _su, f"جواب {_k}")
+_withmini = _sent_to()
+check("با مینی‌اپ: سه پاسخ، یک خبر (یادداشتِ خوانده‌نشده‌ی سیستم مانعش نشد)",
+      len(_withmini) == 1, len(_withmini))
+check("خبر متنِ پاسخ را ندارد", _withmini and "جواب 0" not in _withmini[0]["text"])
+_kbs = json.dumps(_withmini[0]["kb"] if _withmini else {}, ensure_ascii=False)
+check("دکمه‌اش خودِ گفتگو را باز می‌کند (tab=chat)", "tab=chat" in _kbs and "web_app" in _kbs, _kbs[:160])
+D.exec("UPDATE chat_messages SET read_at=CURRENT_TIMESTAMP WHERE tenant_id=? AND user_id=? "
+       "AND sender='admin'", (tid, _su["id"]))
+SENT.clear()
+H.support_reply(H.Ctx(bot, db.get_tenant(tid)), _su, "جواب بعد از خواندن")
+check("بعد از خواندن، خبرِ تازه می‌آید", len(_sent_to()) == 1)
+_srcH = open(H.__file__, encoding="utf-8").read()
+check("پیامِ ادمین و پاسخِ تیکت از همین راه می‌روند",
+      _srcH.count("support_reply(ctx, u, txt") == 2
+      and 'f"💬 <b>پیام از پشتیبانی</b>' not in _srcH)
+
+# ── /start: trial first and green, the mini app suggested (task 6) ──
+section("استارت: دکمه‌ی تست و پیشنهادِ اپلیکیشن")
+_wa = H.welcome_text(H.Ctx(bot, db.get_tenant(tid)), _su)
+check("خوش‌آمد اپلیکیشن را پیشنهاد می‌کند", "اپلیکیشن" in _wa and "پشتیبانی" in _wa, _wa[-160:])
+_mm = H.main_menu(H.Ctx(bot, db.get_tenant(tid)), _su)
+_rows = _mm["inline_keyboard"]
+_app_btn = [b for r in _rows for b in r if "web_app" in b]
+check("دکمه‌ی اپلیکیشن رنگی است (primary)", _app_btn and _app_btn[0].get("style") == "primary",
+      _app_btn[:1])
+_st["trial_enabled"] = True
+db.save_tenant_settings(tid, _st)
+_has_trial = bool(D.trial_plan())
+if _has_trial:
+    _rows = H.main_menu(H.Ctx(bot, db.get_tenant(tid)), D.get_user(_stg))["inline_keyboard"]
+    check("تست رایگان اولین دکمه است و سبز",
+          _rows[0][0].get("callback_data") == "trial" and _rows[0][0].get("style") == "success",
+          _rows[0])
+H.pro_allowed = _old_pro
+_st.pop("miniapp_url", None)
+_st.pop("trial_enabled", None)
+db.save_tenant_settings(tid, _st)
+_wn = H.welcome_text(H.Ctx(bot, db.get_tenant(tid)), _su)
+check("بی مینی‌اپ، پیشنهادش هم نیست", "اپلیکیشن" not in _wn)
 
 
 os.unlink(tmp)

@@ -480,6 +480,16 @@ def _migrate(con):
         # تمدید را رها کند — چون رهاکردنش یعنی مشتری بی‌صدا قطع شود.
         ("subscriptions", "renew_fails", "INTEGER DEFAULT 0"),
         ("subscriptions", "renew_retry_at", "TEXT"),
+        # Config lifecycle (docs/specs/2026-09-30-vpn-fixes.md, task 9).
+        # pending_days: made with "start after first use"; the days start
+        # on the first connection, so there is no expires_at until then.
+        ("subscriptions", "pending_days", "INTEGER"),
+        # When the sweep first saw it ended (date passed or volume used up).
+        ("subscriptions", "ended_at", "TEXT"),
+        ("subscriptions", "notified_del", "INTEGER DEFAULT 0"),
+        # Gone from 3x-ui: deleted by the sweep, or by hand in the panel.
+        ("subscriptions", "deleted_at", "TEXT"),
+        ("subscriptions", "deleted_why", "TEXT"),
         # ── ورود نماینده به پنل ──
         #
         # جدا از panel_user/panel_pass که مال خودِ x-ui است و هرگز
@@ -1679,6 +1689,17 @@ class TenantDB:
             "SELECT * FROM chat_messages WHERE tenant_id=? AND user_id=? "
             "ORDER BY id DESC LIMIT ?", (self.tid, user_id, int(limit)))
         return list(reversed(rows))
+
+    def chat_unread_from_support(self, user_id):
+        """Unread messages a person on the support side wrote (sender 'admin').
+        System notes (reminders, delivery copies) are not counted: a buyer who
+        never opens the mini app piles those up, and counting them stopped
+        every support notice for good."""
+        r = self.q(
+            "SELECT COUNT(*) n FROM chat_messages "
+            "WHERE tenant_id=? AND user_id=? AND sender='admin' AND read_at IS NULL",
+            (self.tid, user_id), one=True)
+        return int((r["n"] if r else 0) or 0)
 
     def chat_unread_for_user(self, user_id):
         """چند پیامِ نخوانده برای *مشتری* — یعنی از طرفِ ما."""

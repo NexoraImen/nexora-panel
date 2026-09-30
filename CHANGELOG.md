@@ -3,6 +3,70 @@
 Each entry says what was broken and why, not a list of commits.
 History before 2.0 lives with the 1.x line.
 
+## [2.0.1] - 2026-09-30
+
+### The bot's messages read like a person wrote them
+
+About a hundred messages to customers and to the admin group were rewritten in plain
+Persian: fewer dashes and filler, no promises the shop did not make, bold only where
+the reader has to look. What each message says is unchanged.
+
+### Configs start on first use, and ended ones are cleaned up
+
+Configs the bot made counted their days from the purchase, so a buyer who
+connected a week later lost that week. They now start on the first
+connection (a switch in the bot settings, on by default), and renewing one
+that has not started adds to its days instead of restarting it from today.
+
+A config deleted by hand in 3x-ui stayed in the mini app and in "my
+subscriptions" forever. An hourly job in the panel now hides it, and deletes
+configs that ended and were not renewed for five days (one day's warning to
+the buyer; the number of days is a setting, 0 turns it off). A reseller's
+config is deleted through the same code as the portal's delete button, so its
+usage and period share stay on the bill.
+
+### Volume resellers can have a monthly rate for unlimited configs
+
+A group with a per-GB price billed every config by usage, so there was no way
+to sell a reseller volume configs by usage and unlimited ones at a fixed rate.
+A volume group with an unlimited rate now does exactly that on every
+accounting page, and the reseller portal makes a real unlimited config for it.
+
+### Mini app and support chat
+
+The mini app showed its splash twice (the page's, then its own). The
+subscriptions tab listed a buyer's whole history as full cards; it is paged
+now, with live subscriptions first. On many Android phones the chat had no
+height limit, so the page grew with every message, and each refresh pulled a
+reader back to the bottom; the chat now scrolls inside its own box.
+
+Support replies sent from the bot's admin menu or a ticket printed the whole
+text into the bot and never reached the mini app chat, and the panel's "new
+reply" notice stopped forever once a buyer had any unread reminder. All
+replies now go to the chat with one notice until read, or in full when the
+shop has no mini app (where the old "press /start" led nowhere).
+
+### /start
+
+The free trial switch sits next to the plans now, with a line that says why
+the green button is or is not shown. The welcome text suggests the mini app.
+
+### Connection diagnosis
+
+A working tunnel over UDP always read "not connected", because only TCP
+connections were counted; the kernel's connection table now counts too. A
+firewall that drops ping made a working tunnel read "path broken"; when the
+tunnel carries traffic such a probe is shown as unanswered instead. The check
+ran every minute on every server and now runs hourly by default (your choice
+on the page), with "check now" for the moment. Inbound advice names today's
+choices: XHTTP with Reality, and a CDN path for when an IP is blocked.
+
+### Panel
+
+Card grids no longer leave a lone card in a half-empty last row. When an
+update leaves the panel's UI older than the server, a banner says so and
+gives the command that fixes it.
+
 ## [2.0.0] - 2026-09-30
 
 ### New home

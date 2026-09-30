@@ -296,7 +296,7 @@ export function BotInboundsSection({ password, tenant = null }) {
               </div>
               {/* دو ستون روی دسکتاپ: هر ردیف فقط نام و پروتکل دارد و در
                   تمام‌عرض، دو سومِ نوار خالی می‌ماند */}
-              <div className="grid gap-2 sm:grid-cols-2">
+              <div className="grid gap-2 sm:grid-cols-2 fx-pair">
               {inbounds.map((i) => {
                 const used = mode === "all" ? i.enable : String(i.id) === String(d?.default);
                 return (

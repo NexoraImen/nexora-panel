@@ -27,6 +27,59 @@ const licSpan = (p) => {
     + (p.license_plan === "yearly" ? `${faNum(n)} سال` : `${faNum(n)} ماه`);
 };
 
+/**
+ * The free-trial switch, next to the plans (docs/specs/2026-09-30-vpn-fixes.md,
+ * task 6). The green "free trial" button on /start needs two things: the
+ * switch on and a plan marked as the trial. The switch lived in "texts and
+ * reminders", so an owner with a trial plan saw no button and no reason.
+ */
+function TrialSwitch({ password, hasTrialPlan }) {
+  const [st, setSt] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const H = { "X-Admin-Password": password };
+  useEffect(() => {
+    fetch(`${API_URL}/api/admin/bot/settings`, { headers: H })
+      .then(async (r) => {
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(errText(j.detail, "خواندنِ تنظیماتِ ربات ناموفق بود"));
+        setSt((j.tenant && j.tenant.settings) || null);
+      })
+      .catch((e) => setErr(e.message));
+  }, [password]);
+  if (err) return <Msg msg={{ t: "err", m: err }} />;
+  if (!st) return null;
+  const on = !!st.trial_enabled;
+  const toggle = async () => {
+    setBusy(true); setErr("");
+    const next = { ...st, trial_enabled: !on };
+    try {
+      const r = await fetch(`${API_URL}/api/admin/bot/settings`, {
+        method: "PUT", headers: { ...H, "Content-Type": "application/json" },
+        body: JSON.stringify({ settings: next }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(errText(j.detail, "ذخیره‌ی تستِ رایگان ناموفق بود"));
+      setSt(next);
+    } catch (e) { setErr(e.message); }
+    finally { setBusy(false); }
+  };
+  const line = !on
+    ? "تستِ رایگان خاموش است؛ کاربرِ تازه دکمه‌ی سبزِ تست را نمی‌بیند."
+    : hasTrialPlan
+      ? "تستِ رایگان روشن است: دکمه‌ی سبزِ «دریافت تست رایگان» اولین دکمه‌ی ربات است."
+      : "روشن است ولی هیچ پلنی «تست رایگان» نیست؛ تا یکی را علامت نزنید دکمه دیده نمی‌شود.";
+  return (
+    <div className="fx-card p-3 mb-3 flex items-center gap-3 flex-wrap"
+      style={on && !hasTrialPlan ? { borderColor: "var(--warn-line)", background: "var(--warn-wash)" } : undefined}>
+      <span className="text-[13px] flex-1" style={{ minWidth: 200, color: on && !hasTrialPlan ? "var(--warn)" : "var(--dim)" }}>
+        {line}
+      </span>
+      <Toggle checked={on} onChange={busy ? () => {} : toggle} label="تستِ رایگان" />
+    </div>
+  );
+}
+
 export function BotPlansSection({ password }) {
   const [plans, setPlans] = useState([]);
   const [saved, setSaved] = useState("[]");
@@ -115,6 +168,8 @@ export function BotPlansSection({ password }) {
           { label: "گران‌ترین", value: `${faNum(maxPrice)} تومان`, color: "var(--purple)" },
         ]} />
       )}
+
+      <TrialSwitch password={password} hasTrialPlan={trialCount > 0} />
 
       {plans.length === 0 && (
         <EmptyState icon={Package} text="هنوز پلنی تعریف نشده"
