@@ -87,6 +87,26 @@ KINDS = {
         "level": "warn", "alert": False,
     },
 
+    # The hourly config sweep (backend/app.py `_sub_lifecycle_tick`). These
+    # were written to the list without a label, so the owner saw an hourly
+    # "unknown event" and no way to tell that the sweep had stopped itself.
+    "sub_sweep_skipped": {
+        "label": "پاک‌سازیِ ساعتی انجام نشد: بیشترِ کانفیگ‌ها در پنل پیدا نشدند و پنل هم جواب نداد",
+        "level": "warn", "alert": False,
+    },
+    "sub_delete_failed": {
+        "label": "پاک‌کردنِ کانفیگِ تمدیدنشده ناموفق",
+        "level": "error", "alert": False,
+    },
+    "sub_gone": {
+        "label": "کانفیگ در پنل حذف شده بود؛ از ربات هم برداشته شد",
+        "level": "info", "alert": False,
+    },
+    "sub_deleted": {
+        "label": "کانفیگِ تمدیدنشده پاک شد",
+        "level": "info", "alert": False,
+    },
+
     # ── اتفاق‌های عادی، برای اینکه فهرست فقط خطا نباشد ──
     "provision": {
         "label": "کانفیگ ساخته شد",
@@ -151,6 +171,10 @@ def describe(kind, data=None):
         bits.append(f"اشتراک #{d['sub']}")
     if d.get("post"):
         bits.append(f"پست #{d['post']}")
+    if d.get("email"):
+        bits.append(str(d["email"])[:64])
+    if d.get("missing") and d.get("of"):
+        bits.append(f"{d['missing']} از {d['of']} کانفیگ")
     if bits:
         out += ": " + " · ".join(bits)
 

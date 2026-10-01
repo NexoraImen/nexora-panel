@@ -67,8 +67,8 @@ function TrialSwitch({ password, hasTrialPlan }) {
   const line = !on
     ? "تستِ رایگان خاموش است؛ کاربرِ تازه دکمه‌ی سبزِ تست را نمی‌بیند."
     : hasTrialPlan
-      ? "تستِ رایگان روشن است: دکمه‌ی سبزِ «دریافت تست رایگان» اولین دکمه‌ی ربات است."
-      : "روشن است ولی هیچ پلنی «تست رایگان» نیست؛ تا یکی را علامت نزنید دکمه دیده نمی‌شود.";
+      ? "تستِ رایگان روشن است. هر مشتری دکمه‌ی سبز را یک‌بار می‌بیند؛ شما به‌عنوانِ مدیر همیشه، تا خودتان امتحانش کنید."
+      : "روشن است ولی هیچ پلنِ روشنی «تست رایگان» نیست؛ تا یکی را علامت نزنید و روشن نکنید، دکمه دیده نمی‌شود.";
   return (
     <div className="fx-card p-3 mb-3 flex items-center gap-3 flex-wrap"
       style={on && !hasTrialPlan ? { borderColor: "var(--warn-line)", background: "var(--warn-wash)" } : undefined}>
@@ -169,7 +169,11 @@ export function BotPlansSection({ password }) {
         ]} />
       )}
 
-      <TrialSwitch password={password} hasTrialPlan={trialCount > 0} />
+      {/* Only a plan that is on counts: the bot's `trial_plan()` reads
+          is_active=1, so a trial plan switched off made this say "on" while
+          the bot showed no button. */}
+      <TrialSwitch password={password}
+        hasTrialPlan={plans.some((p) => p.is_trial && isOn(p.is_active))} />
 
       {plans.length === 0 && (
         <EmptyState icon={Package} text="هنوز پلنی تعریف نشده"

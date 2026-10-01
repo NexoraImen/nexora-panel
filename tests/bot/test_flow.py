@@ -1788,6 +1788,7 @@ check("تصمیمِ هشدار یک‌جاست",
 # نوعِ ناشناخته بی‌صدا دور انداخته نمی‌شود، ولی «رویدادِ ناشناخته»
 # در فهرستِ مالک هم چیزی به او نمی‌گوید.
 import ast as _ast            # noqa: E402
+import glob                   # noqa: E402
 import re as _re              # noqa: E402
 
 # با ast، نه regex: صدازدن‌های `_event(t["id"], "reminder_failed", …)`
@@ -1795,7 +1796,11 @@ import re as _re              # noqa: E402
 # صدازدن را ندید — دروازه‌ای که کمتر از واقعیت می‌بیند، سبزِ دروغ
 # می‌دهد.
 _used = set()
-for _src in (_HSRC, _RSRC):
+# The panel writes events into the same list (the hourly config sweep), and
+# its four kinds were missing: the owner saw "unknown event" every hour.
+_PANEL_SRCS = [io.open(p, encoding="utf-8").read() for p in
+               ["backend/app.py"] + sorted(glob.glob("backend/pro/*.py"))]
+for _src in [_HSRC, _RSRC] + _PANEL_SRCS:
     for _n in _ast.walk(_ast.parse(_src)):
         if not isinstance(_n, _ast.Call):
             continue

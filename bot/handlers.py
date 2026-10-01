@@ -421,7 +421,11 @@ def trial_offer(ctx, user):
     فعال نیست» بود. و هر کاربر یک‌بار — چه از ربات گرفته باشد چه از مینی‌اپ،
     چون هر دو از `trial_core` و همان پرچمِ `trial_used` می‌گذرند.
     """
-    return bool(ctx.s.get("trial_enabled") and not user.get("trial_used")
+    # An admin always sees it and can take it again: the owner had used his
+    # own trial while testing, so the button he had just switched on never
+    # appeared for him and he had no way to see what a new customer sees.
+    return bool(ctx.s.get("trial_enabled")
+                and (not user.get("trial_used") or ctx.is_admin(user["tg_id"]))
                 and ctx.db.trial_plan())
 
 
@@ -3145,7 +3149,9 @@ def trial_core(ctx, u):
     """
     if store_gate(ctx):
         return False, "store_closed"
-    if u.get("trial_used"):
+    # An admin may take the trial again, to test the flow (see `trial_offer`).
+    again = bool(u.get("trial_used")) and ctx.is_admin(u["tg_id"])
+    if u.get("trial_used") and not again:
         return False, "used"
     plan = ctx.db.trial_plan()
     if not plan:
@@ -3156,7 +3162,7 @@ def trial_core(ctx, u):
     # بررسی بالا فقط یک خواندن است؛ بین آن و نوشتن پرچم، ساخت کانفیگ
     # چند ثانیه طول می‌کشد. دو بار زدنِ دکمه یعنی هر دو نخ پرچم را
     # صفر می‌دیدند و هر دو کانفیگ رایگان می‌ساختند.
-    if not ctx.db.claim_trial(u["id"]):
+    if not again and not ctx.db.claim_trial(u["id"]):
         return False, "used"
 
     order = ctx.db.create_order(u["id"], plan["id"], 0, 0, kind="new")
@@ -3168,7 +3174,8 @@ def trial_core(ctx, u):
     ok, result = provision(ctx, order["id"])
     if not ok:
         # پیامِ صداکننده می‌گوید تست محفوظ است — پس واقعاً پسش می‌دهیم
-        ctx.db.release_trial(u["id"])
+        if not again:
+            ctx.db.release_trial(u["id"])
         ctx.db.close_order(order["id"], "rejected", "ساخت اشتراک تست ناموفق")
         return False, str(result)
 
@@ -3243,7 +3250,7 @@ def give_trial(ctx, user, chat_id, message_id):
     if closed:
         return _reply(ctx, chat_id, message_id, closed, back_kb())
     u = ctx.db.get_user(user["tg_id"])
-    if u.get("trial_used"):
+    if u.get("trial_used") and not ctx.is_admin(u["tg_id"]):
         return _reply(ctx, chat_id, message_id, TRIAL_USED_TEXT,
                       kb([[("🛒 دیدن پلن‌ها", "buy")], [("‹ بازگشت", "menu")]]))
     if not ctx.db.trial_plan():

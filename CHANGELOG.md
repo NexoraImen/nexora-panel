@@ -3,6 +3,62 @@
 Each entry says what was broken and why, not a list of commits.
 History before 2.0 lives with the 1.x line.
 
+## [2.1.0] - 2026-10-01
+
+### Configs deleted in 3x-ui stayed in the bot
+
+The hourly cleanup refused to touch a shop when half its configs vanished at
+once, taking that for a bad read of the 3x-ui database. A shop with eight
+configs whose owner deleted five test ones looked exactly like that, so the
+cleanup skipped it every hour and the deleted configs stayed in the bot. It
+now asks the shop's own 3x-ui about each missing config and only stands down
+when that panel does not answer. The skip was also listed as "unknown event"
+in the bot's events page; the cleanup's events now have names.
+
+### The free-trial button did not show for the owner
+
+Each account sees the trial once, and the owner had used his while testing, so
+the button he had just switched on never appeared for him. An admin now always
+sees it and can take it again. The plans page also said the trial was on when
+the trial plan itself was switched off.
+
+### Some switches saved a page element instead of on/off
+
+The shared switch component handed its click event to the page, and four
+settings (trial follow-up, coins, the channel's AI, monitoring) saved that
+event as their value. The trial follow-up's Save then failed with "Converting
+circular structure to JSON". The switch now passes on/off.
+
+### One backup file for the whole panel
+
+There were three separate backups (settings, bot, accounting), and none held
+the tunnels, receipts, logos, license or the panel's secret address. Settings
+→ «پنل، رمز و پشتیبان» now downloads one zip with all of it and restores it,
+after checking every file's checksum and keeping a copy of the current state.
+On the server: `nexora backup` and `nexora restore FILE`.
+
+### A management bot, separate from the sales bot
+
+A second Telegram bot just for the owner: server status, the backup (now or
+every 6/12/24 hours), today's sales, a config lookup, restarts and the panel
+address. Server and tunnel alerts go to it instead of the sales bot's group
+(or to a separate monitoring bot, if one is set). Without it, alerts go where
+they went before.
+
+### Calmer pages
+
+- The sales report's daily chart drew only the days that sold, as bars
+  stretched across the card: three sales were three walls. It now shows every
+  day of the range, and a bar is at most 40 px wide.
+- «واسطه‌ها و نرخ» warned «نیاز به تنظیم» for every group whose billing is
+  off, which is how the owner's own direct customers are meant to be. Those
+  are one quiet line now; the warning is kept for a reseller with no rate.
+  Every reseller row shows its amount (also zero), and the editor shows the
+  invoice's figure since the last settlement instead of lifetime usage × rate.
+- The funnel's four big cards, the inbounds page's three tiles and the
+  resellers page's tiles are one strip each; empty feedback boxes and
+  zero-cost expense categories fold into a line; history rows are shorter.
+
 ## [2.0.1] - 2026-09-30
 
 ### The bot's messages read like a person wrote them

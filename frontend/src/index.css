@@ -3124,9 +3124,10 @@ body.fx-calm *, body.fx-calm *::before, body.fx-calm *::after {
   display: flex; flex-direction: column;
   border: 1px solid var(--border); border-radius: var(--r-m); overflow: hidden;
 }
+/* 6 px, not 10: eleven settings versions took 730 px (66 px a row) */
 .fx-row-kv {
   display: flex; align-items: center; justify-content: space-between; gap: 10px;
-  padding: 10px 12px; font-size: 13px; color: var(--dim);
+  padding: 6px 12px; font-size: 13px; color: var(--dim);
   border-bottom: 1px solid var(--border);
 }
 .fx-row-kv:last-child { border-bottom: none; }
@@ -4455,7 +4456,10 @@ button.pd-kpi:active { transform: scale(.985); }
   opacity: .38; transform-origin: bottom; animation: fx-grow .5s var(--sp-soft) both; }
 .fx-spark > i.last { opacity: 1; }
 .fx-bars-wrap { position: relative; }
-.fx-bars { position: relative; display: grid; grid-template-columns: repeat(var(--n), minmax(0, 1fr));
+/* A bar is at most 40 px: with three days of data the old 1fr columns drew
+   three walls across the card (the owner's sales report, 2026-10-01). */
+.fx-bars { position: relative; display: grid; grid-template-columns: repeat(var(--n), minmax(0, 40px));
+  justify-content: space-between;
   align-items: end; gap: clamp(1px, calc(240px / var(--n)), 6px); cursor: crosshair; touch-action: pan-y; }
 .fx-bars > .gl { position: absolute; inset-inline: 0; height: 0; border-top: 1px dashed var(--border); pointer-events: none; }
 .fx-bars > .b { position: relative; height: var(--h); min-height: 0; border-radius: 4px 4px 2px 2px;

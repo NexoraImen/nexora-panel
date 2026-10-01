@@ -1882,6 +1882,14 @@ check("the build carries its version and the panel compares it with the server's
       and "__NX_BUILD__" in ALL.get("ui/pro.jsx", "")
       and '"version": _panel_version()' in _APPB)
 
+head("Toggle gives its callers a value, not the click event")
+# Four callers wrote `(v) => up({ enabled: v })` while Toggle passed the click
+# event: the trial follow-up stored a DOM node and its save died with
+# "Converting circular structure to JSON".
+_tg = UI.split("export function Toggle(")[1].split("\nexport ")[0]
+check("Toggle calls onChange(!checked)", "onChange(!checked)" in _tg
+      and "onClick={onChange}" not in _tg, _tg[:160])
+
 color = G if not _fail else R
 print(f"  {color}{_ok} پاس{X}" + (f" · {R}{_fail} ناموفق{X}" if _fail else ""))
 print()

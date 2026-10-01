@@ -260,6 +260,29 @@ else:
     check("a second trial is refused", H.trial_core(AP._mini_ctx(T)[1], U()) == (False, "used"))
 
 # ═══════════════════════════════════════════════════════════
+head("The admin always sees the trial button, to test what customers see")
+# ═══════════════════════════════════════════════════════════
+# The owner had taken his own trial while testing; after he switched the trial
+# on, the button never appeared for him and he reported it as missing.
+DO.create_user(520, first_name="Admin")
+DO.exec("UPDATE users SET trial_used=1 WHERE tenant_id=? AND tg_id=520", (OWNER,))
+DB.update_tenant(OWNER, owner_tg_id=520)
+_ca = AP._mini_ctx(AP._tenant_row(OWNER))[1]
+_ua = DO.get_user(520)
+check("an admin who used the trial still sees the button",
+      any(b.get("callback_data") == "trial" for r in H.main_menu(_ca, _ua)["inline_keyboard"] for b in r))
+_nb = len(BUILT)
+_oka, _ = H.trial_core(_ca, _ua)
+check("… and can take it again", _oka and len(BUILT) == _nb + 1)
+check("a customer who used it still cannot", H.trial_core(_ca, U()) == (False, "used")
+      and not any(b.get("callback_data") == "trial"
+                  for r in H.main_menu(_ca, U())["inline_keyboard"] for b in r))
+# the admin's trial was only for this check; the funnel below counts trials
+DO.exec("DELETE FROM orders WHERE tenant_id=? AND user_id=?", (OWNER, _ua["id"]))
+DO.exec("DELETE FROM users WHERE tenant_id=? AND id=?", (OWNER, _ua["id"]))
+DB.update_tenant(OWNER, owner_tg_id=None)
+
+# ═══════════════════════════════════════════════════════════
 if PRO:
     head("سفارشِ باز: زدن، همان کارت و رسید را باز می‌کند")
     # ═══════════════════════════════════════════════════════════

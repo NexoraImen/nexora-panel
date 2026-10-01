@@ -149,9 +149,14 @@ export function Field({ label, hint, children }) {
   );
 }
 
+/* onChange gets the new value, never the click event. It used to get the
+   event, and four callers wrote `(v) => up({ enabled: v })`: turning the
+   trial follow-up on stored a DOM node, and saving it died with "Converting
+   circular structure to JSON". Callers that flip the value themselves ignore
+   the argument and are unaffected. */
 export function Toggle({ checked, onChange, label }) {
   return (
-    <button onClick={onChange} role="switch" aria-checked={checked} aria-label={label}
+    <button onClick={() => onChange(!checked)} role="switch" aria-checked={checked} aria-label={label}
       className="w-12 h-[26px] rounded-full transition-all relative shrink-0"
       style={{ background: checked ? "var(--accent)" : "var(--hair-3)" }}>
       <span className="absolute top-[3px] w-5 h-5 rounded-full bg-white transition-all duration-200"
@@ -218,7 +223,7 @@ export function SectionHead({ title, desc, action }) {
   return (
     <div className="flex items-start justify-between gap-3 mb-4 flex-wrap">
       <div className="min-w-0 fx-sec-head">
-        <h2 className="text-[17px] font-bold text-white">{title}</h2>
+        {title && <h2 className="text-[17px] font-bold text-white">{title}</h2>}
         {desc && <p className="text-[12.5px] mt-1 leading-relaxed" style={{ color: "var(--muted)" }}>{desc}</p>}
       </div>
       {action}

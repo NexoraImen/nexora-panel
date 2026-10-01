@@ -4462,6 +4462,41 @@ def _sub_delete(h, t, d, s, now):
         d.release_renewal(s["id"])
 
 
+def _sub_api_client(c):
+    """A client as 3x-ui's API returns it, in `_read_xui_clients` shape:
+    the sweep reads only these three fields."""
+    up, down = int(c.get("up") or 0), int(c.get("down") or 0)
+    return {"email": c.get("email"),
+            "expiry": int(c.get("expiryTime") or 0),
+            "totalGB": int(c.get("totalGB") or c.get("total") or 0),
+            "used": up + down or int(c.get("usedTraffic") or 0)}
+
+
+def _sub_confirm_missing(h, t, missing):
+    """
+    Ask the shop's own 3x-ui about configs the database read did not find.
+    Returns {email: client} for the ones it still has (the rest are gone), or
+    None when the panel cannot be asked, before or after: `find_client` says
+    None both for "not there" and for "panel down", so a panel that stops
+    answering mid-way must not turn into "everything was deleted".
+    """
+    try:
+        x = h.Ctx(h.Bot(t["bot_token"]), t).xui
+        if not x.inbounds():
+            return None
+        found = {}
+        for s in missing:
+            c = x.find_client(s["inbound_id"], email=s["client_email"])
+            if isinstance(c, dict) and c:
+                found[s["client_email"]] = _sub_api_client(c)
+        if not x.inbounds():
+            return None
+        return found
+    except Exception as e:
+        log.warning("sub sweep: shop %s: 3x-ui API not reachable: %s", t["id"], e)
+        return None
+
+
 def _sub_lifecycle_shop(h, t, index, now):
     """One shop's pass. Returns counts, for the log and the tests."""
     d = h.DB.TenantDB(t["id"])
@@ -4472,13 +4507,22 @@ def _sub_lifecycle_shop(h, t, index, now):
                "WHERE s.tenant_id=? AND s.is_active=1 AND s.deleted_at IS NULL",
                (t["id"],))
     missing = [s for s in subs if s["client_email"] not in index]
-    # Half the shop gone at once is a wrong panel or a bad read, not hands
-    # deleting configs one by one: mark nothing and say so.
+    # Half the shop gone at once can be a wrong panel or a bad read. It can
+    # also be an owner with eight configs who deleted five test ones by hand,
+    # and the first version of this guard could not tell the two apart: it
+    # skipped that shop every hour and the deleted configs stayed in the bot.
+    # So the shop's own 3x-ui (the one the bot creates on) is asked about each
+    # one; only when it cannot be asked is nothing marked.
     guard = len(missing) >= 5 and len(missing) * 2 >= len(subs)
     if guard:
-        out["skipped"] = f"{len(missing)} of {len(subs)} configs missing from 3x-ui"
-        log.warning("sub sweep: shop %s: %s; nothing marked", t["id"], out["skipped"])
-        d.log("sub_sweep_skipped", None, {"why": out["skipped"]})
+        found = _sub_confirm_missing(h, t, missing)
+        if found is None:
+            out["skipped"] = f"{len(missing)} of {len(subs)} configs missing from 3x-ui"
+            log.warning("sub sweep: shop %s: %s; nothing marked", t["id"], out["skipped"])
+            d.log("sub_sweep_skipped", None, {"missing": len(missing), "of": len(subs)})
+        else:
+            index = {**index, **found}
+            guard = False
     stamp = now.isoformat(timespec="seconds")
     for s in subs:
         cl = index.get(s["client_email"])
@@ -7415,6 +7459,106 @@ def _bot_money_in():
         con.close()
 
 
+# ── One-file backup (docs/specs/2026-10-01-admin-bot-backup-ui.md, part A) ──
+try:
+    import backup as BACKUP                 # noqa: E402
+except ImportError:
+    # Loaded by path without backend/ on sys.path (many tests, like `license`
+    # above): the same object under the plain name.
+    import importlib.util as _ibak
+    import sys as _sys
+    _bs = _ibak.spec_from_file_location("backup", Path(__file__).resolve().parent / "backup.py")
+    BACKUP = _ibak.module_from_spec(_bs)
+    _sys.modules["backup"] = BACKUP
+    _bs.loader.exec_module(BACKUP)
+
+
+def _backup_dbs():
+    """Where each database really is: the bot and billing paths come from
+    environment variables and are not always under data/."""
+    return {"bot.db": BOT_DB, "billing.db": BILLING_DB,
+            "tunnels.db": Path(os.getenv("TUNNEL_DB_PATH",
+                                         str(CONFIG_PATH.parent / "tunnels.db")))}
+
+
+def _backup_dir():
+    d = CONFIG_PATH.parent / "backups"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def _backup_host():
+    import socket
+    return _re.sub(r"[^A-Za-z0-9.-]", "", socket.gethostname())[:40] or "panel"
+
+
+def full_backup_file():
+    """Build the whole-panel zip in data/backups/ and return its path. Used by
+    the download below, by `nexora backup` and by the management bot."""
+    name = f"nexora-backup-{_backup_host()}-{datetime.now():%Y%m%d-%H%M%S}.zip"
+    out = _backup_dir() / name
+    BACKUP.build(CONFIG_PATH.parent, _backup_dbs(), _panel_version(), out,
+                 host=_backup_host())
+    # Keep the ten newest: one a day for a week and a half, not a full disk.
+    olds = sorted(_backup_dir().glob("nexora-backup-*.zip"))[:-10]
+    for p in olds:
+        try:
+            p.unlink()
+        except OSError as e:
+            log.warning("old backup %s not removed: %s", p.name, e)
+    return out
+
+
+@app.get("/api/admin/backup/full")
+def backup_full(x_admin_password: str = Header(...)):
+    """The whole panel in one zip: databases, settings, receipts, logos."""
+    check_auth(x_admin_password)
+    try:
+        p = full_backup_file()
+    except Exception as e:
+        log.warning("full backup failed", exc_info=True)
+        raise HTTPException(status_code=500,
+                            detail=f"ساختِ پشتیبان ناموفق بود: {type(e).__name__}: {str(e)[:160]}")
+    return Response(content=p.read_bytes(), media_type="application/zip",
+                    headers={"Content-Disposition": f'attachment; filename="{p.name}"'})
+
+
+@app.post("/api/admin/backup/full/restore")
+async def backup_full_restore(request: Request, x_admin_password: str = Header(...)):
+    """
+    Restore the whole panel from one zip (raw body, no multipart: one less
+    dependency on every server). The current state is saved first as a
+    backup of its own; without that copy nothing is touched.
+    """
+    check_auth(x_admin_password)
+    body = await request.body()
+    if not body:
+        raise HTTPException(status_code=400, detail="فایلی فرستاده نشد")
+    up = _backup_dir() / f"upload-{datetime.now():%Y%m%d-%H%M%S}.zip"
+    up.write_bytes(body)
+    safety = _backup_dir() / f"before-restore-{datetime.now():%Y%m%d-%H%M%S}.zip"
+    try:
+        out = BACKUP.restore(up, CONFIG_PATH.parent, _backup_dbs(), _panel_version(),
+                             safety, host=_backup_host())
+    except BACKUP.BackupError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    finally:
+        try:
+            up.unlink()
+        except OSError as e:
+            # a stray upload is disk, not data: said, not raised
+            log.warning("uploaded backup %s not removed: %s", up.name, e)
+    # The settings cache and the bot's connections read the old state until
+    # they reopen; restarting the bot is the reliable way. The panel reads
+    # its config from the database on every call.
+    ok, why = _svc("restart")
+    out["botRestarted"] = ok
+    if not ok:
+        out["botWarning"] = f"ربات دوباره راه‌اندازی نشد ({why}); یک‌بار از صفحه‌ی ربات روشنش کنید."
+    log.info("full restore: %d files from %s", len(out["restored"]), out.get("from"))
+    return out
+
+
 @app.get("/api/admin/billing/backup")
 def billing_backup(x_admin_password: str = Header(...)):
     """بک‌آپ کامل حسابداری — نرخ‌ها، پرداخت‌ها و لاگ تمدید."""
@@ -7984,6 +8128,13 @@ def _health_alert(server, data, key):
                 lines.append(f"   <i>{c['hint'][:110]}</i>")
         text = "\n".join(lines)
 
+    # Server and tunnel alerts belong to the owner's management bot, not the
+    # bot his customers buy from (docs/specs/2026-10-01-admin-bot-backup-ui.md).
+    # Not delivered there (no bot set, or Telegram refused) → the sales bot's
+    # group as before: an alert that goes nowhere is the one failure this
+    # function exists to prevent.
+    if _adminbot_alert(text):
+        return
     try:
         import sqlite3 as sq
         con = sq.connect(f"file:{BOT_DB}?mode=ro", uri=True, timeout=5)
@@ -8033,6 +8184,233 @@ def _health_alert(server, data, key):
     except Exception as e:
         # توکن در آدرس است؛ فقط نوع و متنِ کوتاهِ خطا، نه URL
         log.warning("health alert not sent: %s: %s", type(e).__name__, str(e)[:160])
+
+
+# ── Management bot (docs/specs/2026-10-01-admin-bot-backup-ui.md, part B) ──
+try:
+    import adminbot as ADMINBOT             # noqa: E402
+except ImportError:
+    import importlib.util as _iadb
+    import sys as _sys
+    _as = _iadb.spec_from_file_location("adminbot", Path(__file__).resolve().parent / "adminbot.py")
+    ADMINBOT = _iadb.module_from_spec(_as)
+    _sys.modules["adminbot"] = ADMINBOT
+    _as.loader.exec_module(ADMINBOT)
+
+
+def _tg_bot(token):
+    """The bot's own Telegram client (retries, safe HTML), not a third copy."""
+    _bot_handlers()                         # puts bot/ on sys.path
+    import tg as _TG
+    return _TG.Bot(token)
+
+
+def _adminbot_alert(text):
+    """Send an alert to the management bot's admins. True if anyone got it."""
+    s = ADMINBOT.settings(ADMINBOT.load(CONFIG_PATH.parent))
+    tok = s["monitorToken"] or s["token"]
+    if not tok or not s["admins"]:
+        return False
+    sent = False
+    bot = _tg_bot(tok)
+    for cid in s["admins"]:
+        try:
+            bot.send(cid, text)
+            sent = True
+        except Exception as e:
+            log.warning("management bot alert to %s not sent: %s", cid, str(e)[:160])
+    return sent
+
+
+_LIC_STATE_FA = {"active": "فعال", "grace": "در مهلت", "expired": "منقضی",
+                 "none": "ندارد", "invalid": "نامعتبر"}
+
+
+class _AdminBotApi:
+    """What each button of the management bot does: the panel's own functions."""
+
+    def status(self):
+        lines = [f"📊 <b>وضعیت</b> · نسخه‌ی {_panel_version()}", ""]
+        if HEALTH:
+            try:
+                h = HEALTH.run_all(ports=_health_ports(), domain=_health_domain())
+                icon = {"ok": "🟢", "warn": "🟡", "crit": "🔴"}.get(h.get("level"), "⚪")
+                lines.append(f"{icon} سرور: {h.get('summary', '')}")
+                for c in [c for c in h.get("checks", []) if c.get("level") != "ok"][:5]:
+                    lines.append(f"   {'❌' if c['level'] == 'crit' else '⚠️'} {c['title']}: {c['detail']}")
+            except Exception as e:
+                lines.append(f"⚪ بررسیِ سرور ناموفق: {type(e).__name__}")
+        lines.append(("🟢" if _svc_active("nexora-bot") else "🔴") + " ربات فروش")
+        try:
+            st = LIC.status()
+            lines.append(f"🔑 مجوز Pro: {_LIC_STATE_FA.get(st.get('state'), st.get('state') or '؟')}")
+        except Exception as e:
+            lines.append(f"🔑 مجوز: خوانده نشد ({type(e).__name__})")
+        return "\n".join(lines)
+
+    def backup(self):
+        return full_backup_file()
+
+    def sales(self):
+        t = _root_tenant_row()
+        if not t:
+            return "ربات فروش هنوز تنظیم نشده."
+        st = _bot_db_rw(t).stats()
+        h = _bot_handlers()
+        fa, toman = h.core.fa, h.core.toman
+        out = (f"💰 <b>امروز</b>\n\n"
+               f"فروش: <b>{toman(st.get('revenue_today', 0))}</b> تومان\n"
+               f"کاربرِ تازه: <b>{fa(st.get('users_today', 0))}</b>\n"
+               f"اشتراکِ فعال: <b>{fa(st.get('active_subs', 0))}</b>\n"
+               f"رسیدِ در انتظار: <b>{fa(st.get('pending', 0))}</b>")
+        if st.get("open_tickets"):
+            out += f"\nتیکتِ باز: <b>{fa(st['open_tickets'])}</b>"
+        return out
+
+    def search(self, q):
+        clients, _k, err = _read_xui_clients()
+        if clients is None:
+            return f"❌ دیتابیسِ 3x-ui خوانده نشد: {err}"
+        ql = q.strip().lower()
+        hits = [c for c in clients if ql in (c.get("email") or "").lower()
+                or ql in (c.get("comment") or "").lower()][:6]
+        if not hits:
+            return f"کانفیگی با «{q[:40]}» پیدا نشد."
+        fa_date = _bot_handlers().core.fa_date
+        gb = 1024 ** 3
+        rows = []
+        for c in hits:
+            used = c.get("used", 0) / gb
+            tot = c.get("totalGB", 0) / gb
+            exp = int(c.get("expiry") or 0)
+            if exp < 0:
+                when = f"از اولین اتصال، {-exp // 86400000} روز"
+            elif exp == 0:
+                when = "بی‌تاریخ"
+            else:
+                when = fa_date(datetime.fromtimestamp(exp / 1000).isoformat())
+            rows.append(f"{'🟢' if c.get('enable') else '⚫️'} <code>{c.get('email')}</code> · {c.get('group')}\n"
+                        f"   {used:.1f} از {('%.0f' % tot + ' گیگ') if tot else 'نامحدود'} · {when}")
+        more = f"\n\n(فقط {len(hits)} مورد اول)" if len(hits) == 6 else ""
+        return "🔎 <b>نتیجه</b>\n\n" + "\n\n".join(rows) + more
+
+    def restart(self, what):
+        return _svc("restart", "nexora-bot" if what == "bot" else "nexora-panel")
+
+    def admin_url(self):
+        return admin_url()
+
+    def set_backup_every(self, h):
+        ADMINBOT.update(CONFIG_PATH.parent, backupEvery=int(h))
+
+
+_ADMINBOT_STOP = _threading.Event()
+
+
+@app.on_event("startup")
+def _adminbot_boot():
+    if os.getenv("NEXORA_NO_ADMIN_BOT"):
+        return
+    _threading.Thread(target=ADMINBOT.loop, name="admin-bot", daemon=True,
+                      args=(_tg_bot, _AdminBotApi(), CONFIG_PATH.parent,
+                            _ADMINBOT_STOP)).start()
+
+
+def _mask_token(tok):
+    return (tok[:6] + "…" + tok[-4:]) if tok and len(tok) > 12 else ("…" if tok else "")
+
+
+@app.get("/api/admin/adminbot")
+def adminbot_get(x_admin_password: str = Header(...)):
+    """The management bot's settings. Tokens are never sent back whole."""
+    check_auth(x_admin_password)
+    raw = ADMINBOT.load(CONFIG_PATH.parent)
+    s = ADMINBOT.settings(raw)
+    root = _root_tenant_row() or {}
+    return {"token": _mask_token(s["token"]), "hasToken": bool(s["token"]),
+            "monitorToken": _mask_token(s["monitorToken"]), "hasMonitorToken": bool(s["monitorToken"]),
+            "admins": s["admins"], "backupEvery": s["backupEvery"],
+            "everyChoices": list(ADMINBOT.BACKUP_EVERY_CHOICES),
+            "suggestAdmin": root.get("owner_tg_id") or None,
+            "lastBackup": raw.get("lastBackup")}
+
+
+@app.put("/api/admin/adminbot")
+def adminbot_put(body: dict, x_admin_password: str = Header(...)):
+    """
+    Save the management bot. A token is checked with getMe before it is kept,
+    and refused when it is a sales bot's token: two pollers on one token take
+    turns getting "409 Conflict" and both bots go half-deaf.
+    """
+    check_auth(x_admin_password)
+    cur = ADMINBOT.load(CONFIG_PATH.parent)
+    names = {}
+    for key in ("token", "monitorToken"):
+        if key not in body:
+            continue
+        tok = str(body.get(key) or "").strip()
+        if tok and "…" in tok:
+            continue                       # the masked value came back unchanged
+        if tok:
+            con = _bot_conn()
+            try:
+                used = con and con.execute("SELECT 1 FROM tenants WHERE bot_token=?", (tok,)).fetchone()
+            finally:
+                if con:
+                    con.close()
+            if used:
+                raise HTTPException(400, detail="این توکنِ رباتِ فروش است. برای ربات مدیریت یک ربات تازه در BotFather بسازید.")
+            if tok == (cur.get("token") if key == "monitorToken" else cur.get("monitorToken")):
+                raise HTTPException(400, detail="ربات مدیریت و ربات مانیتورینگ باید دو ربات جدا باشند (یا مانیتورینگ را خالی بگذارید).")
+            try:
+                me = _tg_bot(tok).me() or {}
+            except Exception as e:
+                raise HTTPException(400, detail=f"تلگرام این توکن را نپذیرفت: {str(e)[:120]}")
+            names[key] = me.get("username") or ""
+        cur[key] = tok
+    if "admins" in body:
+        ids = []
+        for x in body.get("admins") or []:
+            sx = str(x).strip()
+            if not sx.lstrip("-").isdigit():
+                raise HTTPException(400, detail=f"شناسه‌ی عددیِ تلگرام نیست: {sx[:20]}")
+            ids.append(int(sx))
+        cur["admins"] = ids
+    if "backupEvery" in body:
+        h = int(body.get("backupEvery") or 0)
+        if h not in ADMINBOT.BACKUP_EVERY_CHOICES:
+            raise HTTPException(400, detail="بازه‌ی پشتیبانِ خودکار نامعتبر است")
+        cur["backupEvery"] = h
+    ADMINBOT.update(CONFIG_PATH.parent, **cur)
+    return {**adminbot_get(x_admin_password), "usernames": names}
+
+
+@app.post("/api/admin/adminbot/test")
+def adminbot_test(x_admin_password: str = Header(...)):
+    """Send a hello to every admin, so the owner sees it works (and has pressed
+    Start: a bot cannot message someone who never started it)."""
+    check_auth(x_admin_password)
+    s = ADMINBOT.settings(ADMINBOT.load(CONFIG_PATH.parent))
+    if not s["token"] or not s["admins"]:
+        raise HTTPException(400, detail="اول توکن و شناسه‌ی مدیر را ذخیره کنید")
+    out = []
+    for tok, label in ((s["token"], "مدیریت"), (s["monitorToken"], "مانیتورینگ")):
+        if not tok:
+            continue
+        bot = _tg_bot(tok)
+        for cid in s["admins"]:
+            try:
+                if label == "مدیریت":
+                    bot.send(cid, ADMINBOT.MENU_TEXT, ADMINBOT.menu_kb())
+                else:
+                    bot.send(cid, "📡 ربات مانیتورینگ وصل است. هشدارهای سرور و تانل این‌جا می‌آیند.")
+                out.append({"bot": label, "to": cid, "ok": True})
+            except Exception as e:
+                why = str(e)[:140]
+                if "chat not found" in why.lower() or "forbidden" in why.lower():
+                    why = "این شناسه هنوز ربات را Start نکرده"
+                out.append({"bot": label, "to": cid, "ok": False, "why": why})
+    return {"results": out}
 
 
 try:

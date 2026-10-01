@@ -96,7 +96,21 @@ export function BotReportSection({ password }) {
   const o = d.orders || {};
   const u = d.users || {};
   const s = d.subs || {};
-  const maxDay = Math.max(...(d.daily || []).map((x) => x.sum), 1);
+  // Every day of the range, not only the days that sold: three sale days
+  // drew three walls labelled "19 to 29 Shahrivar", and the empty days in
+  // between, the ones worth seeing, were not on the chart at all.
+  const byDay = Object.fromEntries((d.daily || []).map((x) => [x.day, x.sum]));
+  const series = [];
+  if ((d.daily || []).length) {
+    const end = new Date();
+    const span = Math.min(Number(days) || 30, 366);
+    for (let i = span - 1; i >= 0; i--) {
+      const t = new Date(end.getFullYear(), end.getMonth(), end.getDate() - i);
+      const k = `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, "0")}-${String(t.getDate()).padStart(2, "0")}`;
+      series.push({ day: k, sum: byDay[k] || 0 });
+    }
+  }
+  const maxDay = Math.max(...series.map((x) => x.sum), 1);
   // میانگین بدون روزهای صفر: روزهای بی‌فروش میانگین را مصنوعی
   // پایین می‌آورند و خط مرجع بی‌معنا می‌شود.
   const sold = (d.daily || []).filter((x) => x.sum > 0);
@@ -140,8 +154,9 @@ export function BotReportSection({ password }) {
             : `از ${faNum(s.total || 0)} اشتراک کل`} />
       </div>
 
+      {/* one line under the tiles, not a full-width card for one sentence */}
       {(o.pending > 0 || o.rejected > 0) && (
-        <div className="fx-card p-5 mb-4">
+        <div className="mb-4 -mt-1 px-1">
           <div className="flex gap-4 flex-wrap text-[13px]">
             {o.pending > 0 && (
               <span style={{ color: "var(--warn)" }}>
@@ -157,17 +172,17 @@ export function BotReportSection({ password }) {
         </div>
       )}
 
-      {(d.daily || []).length > 1 && (
+      {series.length > 1 && (
         <div className="fx-card p-5 mb-4">
           <div className="text-[14px] font-semibold text-white mb-3 flex items-center gap-2">
             <TrendingUp size={15} style={{ color: "var(--accent-2)" }} /> فروش روزانه
           </div>
           <AreaChart
-            data={d.daily.map((x) => x.sum)}
+            data={series.map((x) => x.sum)}
             color="var(--accent-2)"
             height={110}
-            label={`${isoToJalaliLabel(d.daily[0].day)} تا ${isoToJalaliLabel(d.daily[d.daily.length - 1].day)}`}
-            format={(v) => `${faNum(v)} تومان`} labels={d.daily.map((x) => x.day)} />
+            label={`${isoToJalaliLabel(series[0].day)} تا ${isoToJalaliLabel(series[series.length - 1].day)}`}
+            format={(v) => `${faNum(v)} تومان`} labels={series.map((x) => x.day)} />
         </div>
       )}
 

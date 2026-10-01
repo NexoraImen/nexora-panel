@@ -463,7 +463,11 @@
       var a = [], i;
       for (i = 0; i < 30; i++) {
         // صفرِ پیشوند — بکند «2026-08-01» می‌دهد؛ «2026-08-1» تبدیلِ شمسی را رد می‌کرد
-        a.push({ day: "2026-08-" + String(i + 1).padStart(2, "0"),
+        // the last 30 days up to today, like a live server: the report fills
+        // its range from today backwards, so fixed August dates drew 30 zeros
+        var t = new Date(); t.setDate(t.getDate() - 29 + i);
+        if (i % 7 === 3) continue;          // a day with no sale, as real days have
+        a.push({ day: t.getFullYear() + "-" + String(t.getMonth() + 1).padStart(2, "0") + "-" + String(t.getDate()).padStart(2, "0"),
                  n: 2 + Math.round(Math.sin(i / 4) * 2 + (i % 3)),
                  sum: 260000 + Math.round(Math.sin(i / 3.5) * 130000) + i * 13000 });
       }
@@ -585,6 +589,10 @@
      "quotaGB": 440.0,
      "name": "goroh-b",
      "billed": true,
+     "volume": {"perGb": 3200, "basis": "period", "billedGB": 99.0, "lifeGB": 312.4,
+                "amount": 316800, "amountAll": 999680, "lifeBytes": 335437594214,
+                "settledBytes": 229137154048, "billedBytes": 106300440166,
+                "deletedBytes": 0, "bankBytes": 0},
      "amount": 316800,
      "uncertain": 9
     },
@@ -692,8 +700,12 @@
      "uncertain": 5
     }
    ],
-   "needsSetup": [],
-   "needsSetupConfigs": 0,
+   "needsSetup": [
+    {"key": "ali", "configs": 30, "why": "محاسبه برای این گروه خاموش است", "fix": "billable"},
+    {"key": "sajjad", "configs": 24, "why": "محاسبه برای این گروه خاموش است", "fix": "billable"},
+    {"key": "Pelleaval", "configs": 5, "why": "هیچ نرخی تعریف نشده", "fix": "rates"}
+   ],
+   "needsSetupConfigs": 59,
    "totalClients": 36,
    "botClients": 1,
    "needStart": [
@@ -818,6 +830,10 @@
      "quotaGB": 440.0,
      "name": "goroh-b",
      "billed": true,
+     "volume": {"perGb": 3200, "basis": "period", "billedGB": 99.0, "lifeGB": 312.4,
+                "amount": 316800, "amountAll": 999680, "lifeBytes": 335437594214,
+                "settledBytes": 229137154048, "billedBytes": 106300440166,
+                "deletedBytes": 0, "bankBytes": 0},
      "amount": 316800,
      "uncertain": 9
     },
@@ -925,8 +941,12 @@
      "uncertain": 5
     }
    ],
-   "needsSetup": [],
-   "needsSetupConfigs": 0,
+   "needsSetup": [
+    {"key": "ali", "configs": 30, "why": "محاسبه برای این گروه خاموش است", "fix": "billable"},
+    {"key": "sajjad", "configs": 24, "why": "محاسبه برای این گروه خاموش است", "fix": "billable"},
+    {"key": "Pelleaval", "configs": 5, "why": "هیچ نرخی تعریف نشده", "fix": "rates"}
+   ],
+   "needsSetupConfigs": 59,
    "totalClients": 36,
    "botClients": 1,
    "needStart": [
@@ -10518,6 +10538,26 @@
     "level": "error",
     "alert": false
    },
+   "sub_sweep_skipped": {
+    "label": "پاک‌سازیِ ساعتی انجام نشد: بیشترِ کانفیگ‌ها در پنل پیدا نشدند و پنل هم جواب نداد",
+    "level": "warn",
+    "alert": false
+   },
+   "sub_delete_failed": {
+    "label": "پاک‌کردنِ کانفیگِ تمدیدنشده ناموفق",
+    "level": "error",
+    "alert": false
+   },
+   "sub_gone": {
+    "label": "کانفیگ در پنل حذف شده بود؛ از ربات هم برداشته شد",
+    "level": "info",
+    "alert": false
+   },
+   "sub_deleted": {
+    "label": "کانفیگِ تمدیدنشده پاک شد",
+    "level": "info",
+    "alert": false
+   },
    "provision": {
     "label": "کانفیگ ساخته شد",
     "level": "ok",
@@ -10795,6 +10835,15 @@ var D_CODES = { ready: true,
     }
     if (u.indexOf("/admin/panel-path") >= 0) {
       return { path: "k7p2m9x4qa3wd8nv5tzr", url: "https://panel.example.com/k7p2m9x4qa3wd8nv5tzr/" };
+    }
+    /* management bot: the shape of GET /api/admin/adminbot */
+    if (u.indexOf("/admin/adminbot/test") >= 0) {
+      return { results: [{ bot: "مدیریت", to: 584120377, ok: true }] };
+    }
+    if (u.indexOf("/admin/adminbot") >= 0) {
+      return { token: "814402…Qk2E", hasToken: true, monitorToken: "", hasMonitorToken: false,
+        admins: [584120377], backupEvery: 24, everyChoices: [0, 6, 12, 24],
+        suggestAdmin: 584120377, lastBackup: "2026-10-01T03:00:12", usernames: {} };
     }
     // ?stale=1: the server is on a newer version than this UI build, the
     // state `nexora update` left when its build step did not finish

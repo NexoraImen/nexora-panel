@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import { API_URL } from "../../lib/constants";
 import { errMsg, errText, faNum, okJson } from "../../lib/format";
-import { EmptyState, InfoBox, Msg, PageSkeleton, SectionHead, StatTile, StatusChip } from "../../ui/index";
+import { EmptyState, InfoBox, Msg, PageSkeleton, SectionHead, StatStrip, StatusChip } from "../../ui/index";
 
 // سه حالت انتخاب اینباند. متن‌ها عمداً توضیحی‌اند تا مدیر
 // بدون خواندن مستندات بفهمد هرکدام چه اثری روی کانفیگ مشتری دارد.
@@ -139,8 +139,10 @@ export function BotInboundsSection({ password, tenant = null }) {
 
   return (
     <div className="fx-anim">
-      <SectionHead title="اینباندها"
-        desc="مشخص کن کانفیگ هر مشتری روی کدام اینباندهای پنل ساخته شود — با نام، نه با شماره."
+      {/* Inside «اینباند نماینده‌ها» the page already has its title; a
+          second «اینباندها» heading under it was the same page said twice. */}
+      <SectionHead title={tenant ? "" : "اینباندها"}
+        desc={tenant ? "" : "مشخص کن کانفیگ هر مشتری روی کدام اینباندهای پنل ساخته شود — با نام، نه با شماره."}
         action={
           <div className="flex items-center gap-2">
             {dirty && <StatusChip dirty />}
@@ -160,24 +162,17 @@ export function BotInboundsSection({ password, tenant = null }) {
       {/* وضعیت اینباندها در یک نگاه — «اینباند تعریف نشده» یکی از
           پرتکرارترین شکایت‌ها بود و جوابش همین سه عدد است */}
       {d?.ready && inbounds.length > 0 && (
-        <div className="fx-g3 grid grid-cols-3 gap-3">
-          <StatTile label="اینباند فعال" icon={Layers}
-            tone={active.length ? "var(--ok)" : "var(--danger)"}
-            value={faNum(active.length)}
-            color={active.length ? "var(--ok)" : "var(--danger)"}
-            hint={inbounds.length - active.length > 0
-                  ? `${faNum(inbounds.length - active.length)} اینباند خاموش`
-                  : "همه‌ی اینباندها روشن‌اند"} />
-          <StatTile label="انتخاب‌شده برای ربات" icon={Check} tone="var(--accent-2)"
-            value={mode === "all" ? faNum(active.length) : faNum(sel.length)}
-            hint={mode === "all" ? "همه‌ی اینباندهای فعال" : "فقط انتخاب‌شده‌ها"} />
-          <StatTile label="پیش‌فرض" icon={Star}
-            tone={defInb ? "var(--accent-2)" : "var(--warn)"}
-            value={defInb ? (defInb.remark || `#${defInb.id}`) : "تعیین نشده"}
-            color={defInb ? "var(--text)" : "var(--warn)"}
-            hint={defInb ? "کانفیگ‌های تازه این‌جا ساخته می‌شوند"
-                         : "بدون آن، ساخت کانفیگ می‌خوابد"} />
-        </div>
+        <StatStrip items={[
+          { label: "اینباند فعال", value: faNum(active.length),
+            color: active.length ? "var(--ok)" : "var(--danger)",
+            hint: inbounds.length - active.length > 0
+              ? `${faNum(inbounds.length - active.length)} خاموش` : "" },
+          { label: "انتخاب‌شده برای ربات",
+            value: mode === "all" ? faNum(active.length) : faNum(sel.length),
+            hint: mode === "all" ? "همه‌ی فعال‌ها" : "" },
+          { label: "پیش‌فرض", value: defInb ? (defInb.remark || `#${defInb.id}`) : "تعیین نشده",
+            color: defInb ? "var(--text)" : "var(--warn)" },
+        ]} />
       )}
 
       {!d?.ready ? (

@@ -217,12 +217,36 @@ case "$1" in
     ;;
 
   backup)
+    # The whole panel in one zip, the same file as Settings → backup
+    # (docs/specs/2026-10-01-admin-bot-backup-ui.md). It used to copy
+    # config.json alone: no customers, no accounting, no receipts.
     logo
-    mkdir -p /root/backups
-    TS=$(date +%Y%m%d-%H%M%S)
-    cp "$INSTALL_DIR/data/config.json" "/root/backups/config-$TS.json" 2>/dev/null \
-      && ok "Backup saved: /root/backups/config-$TS.json" \
-      || bad "Backup failed — config.json not found"
+    BOT_DB_PATH="$INSTALL_DIR/data/bot.db" BILLING_DB_PATH="$INSTALL_DIR/data/billing.db" \
+    TUNNEL_DB_PATH="$INSTALL_DIR/data/tunnels.db" \
+      "$INSTALL_DIR/backend/venv/bin/python" "$INSTALL_DIR/scripts/full-backup.py" backup \
+      --data "$INSTALL_DIR/data" --out /root/backups \
+      || bad "Backup failed (see the message above)"
+    echo ""
+    ;;
+
+  restore)
+    logo
+    if [ -z "$2" ]; then
+      bad "Usage: nexora restore /root/backups/nexora-backup-....zip"
+      exit 1
+    fi
+    # Stopped first: a restore under a bot that is writing orders would mix
+    # the two states.
+    systemctl stop nexora-bot 2>/dev/null
+    systemctl stop $SERVICE 2>/dev/null
+    BOT_DB_PATH="$INSTALL_DIR/data/bot.db" BILLING_DB_PATH="$INSTALL_DIR/data/billing.db" \
+    TUNNEL_DB_PATH="$INSTALL_DIR/data/tunnels.db" \
+      "$INSTALL_DIR/backend/venv/bin/python" "$INSTALL_DIR/scripts/full-backup.py" restore "$2" \
+      --data "$INSTALL_DIR/data"
+    RC=$?
+    systemctl start $SERVICE 2>/dev/null
+    systemctl start nexora-bot 2>/dev/null
+    [ $RC -eq 0 ] && ok "Panel and bot started again" || bad "Restore did not run; services started again unchanged"
     echo ""
     ;;
 
@@ -1323,7 +1347,8 @@ PYEOF
     echo -e "  ${C_WHITE}nexora logs${C_RESET}                   ${C_DIM}live logs (Ctrl+C to exit)${C_RESET}"
     echo -e "  ${C_WHITE}nexora restart${C_RESET}                ${C_DIM}restart backend${C_RESET}"
     echo -e "  ${C_WHITE}nexora start${C_RESET} / ${C_WHITE}stop${C_RESET}          ${C_DIM}start or stop backend${C_RESET}"
-    echo -e "  ${C_WHITE}nexora backup${C_RESET}                 ${C_DIM}backup settings now${C_RESET}"
+    echo -e "  ${C_WHITE}nexora backup${C_RESET}                 ${C_DIM}whole panel in one zip (/root/backups)${C_RESET}"
+    echo -e "  ${C_WHITE}nexora restore FILE${C_RESET}           ${C_DIM}restore that zip (saves the current state first)${C_RESET}"
     echo -e "  ${C_WHITE}nexora update <file.zip>${C_RESET}      ${C_DIM}update to a new version${C_RESET}"
     echo -e "  ${C_WHITE}nexora rebuild${C_RESET}                ${C_DIM}rebuild admin panel (fixes UI issues)${C_RESET}"
     echo -e "  ${C_WHITE}nexora pro${C_RESET}                    ${C_DIM}install the Pro package for this license${C_RESET}"

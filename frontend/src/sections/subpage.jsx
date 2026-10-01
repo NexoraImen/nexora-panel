@@ -6,7 +6,7 @@
  */
 import React, { useState, useEffect } from "react";
 import {
-  Activity, AlertTriangle, ShoppingCart, TrendingUp, Wallet, Bell, Check, CheckCircle2, ChevronLeft, Clock, Copy, Download, ExternalLink, Eye, Gift, Globe, HelpCircle, Key, Layers, LayoutGrid, Loader2, MessageCircle, MessageSquare, Package, Palette, PlayCircle, Plus, Search, ShieldCheck, Sliders, Smartphone, Star, Trash2, Type, Upload, UserPlus, Users, Video,
+  Activity, AlertTriangle, ShoppingCart, TrendingUp, Wallet, Bell, Check, CheckCircle2, ChevronDown, ChevronLeft, Clock, Copy, Download, ExternalLink, Eye, Gift, Globe, HelpCircle, Key, Layers, LayoutGrid, Loader2, MessageCircle, MessageSquare, Package, Palette, PlayCircle, Plus, Search, ShieldCheck, Sliders, Smartphone, Star, Trash2, Type, Upload, UserPlus, Users, Video,
 } from "lucide-react";
 import { errMsg, errText, faNum, okJson } from "../lib/format";
 import { NexoraMark } from "../lib/mark.jsx";
@@ -960,7 +960,7 @@ function ConfigHistory({ password, onRestored }) {
                 <i className="not-italic text-[12px] truncate"
                   style={{ color: "var(--muted)" }}>{isoToJalaliStamp(v.at)}</i>
               </span>
-              <button className="fx-btn-g px-3 py-1.5 text-[12.5px] flex items-center gap-1.5"
+              <button className="fx-btn-g px-2.5 py-1 text-[12px] flex items-center gap-1.5"
                 disabled={busy === v.version} onClick={() => back(v.version)}>
                 {busy === v.version
                   ? <Loader2 size={12} className="animate-spin" />
@@ -1158,6 +1158,8 @@ export function SettingsSection({ config, setConfig, password, onPasswordChanged
 
       <div className="fx-set-cols">
       <BackupCard password={password} onRestored={onRestored} />
+
+      <AdminBotCard password={password} />
 
       <ChangePasswordCard password={password} onPasswordChanged={onPasswordChanged} />
 
@@ -1435,87 +1437,243 @@ export function ResellersSection({ config, setConfig, requestDelete, password })
   );
 }
 
+/**
+ * The whole panel in one file (docs/specs/2026-10-01-admin-bot-backup-ui.md,
+ * part A). There used to be three backups (this card's settings JSON, the
+ * bot's and accounting's), and none held tunnels, receipts or logos: the owner
+ * had to remember three downloads and a restore still came back incomplete.
+ * The settings-only file stays under «بیشتر», since old files must restore.
+ */
 export function BackupCard({ password, onRestored }) {
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState("");
   const [msg, setMsg] = useState(null);
+  const [more, setMore] = useState(false);
+  const H = { "X-Admin-Password": password };
+
+  const save = (blob, name) => {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = name; a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+  };
+
+  const downloadFull = async () => {
+    setBusy("full"); setMsg(null);
+    try {
+      const res = await fetch(`${API_URL}/api/admin/backup/full`, { headers: H });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        throw new Error(errText(j.detail, "ساختِ پشتیبان ناموفق بود"));
+      }
+      const cd = res.headers.get("Content-Disposition") || "";
+      const name = (cd.match(/filename="([^"]+)"/) || [])[1] || "nexora-backup.zip";
+      save(await res.blob(), name);
+      setMsg({ t: "ok", m: "پشتیبانِ کامل دانلود شد. یک نسخه هم روی سرور (data/backups) ماند." });
+    } catch (e) { setMsg({ t: "err", m: errMsg(e) }); }
+    finally { setBusy(""); }
+  };
+
+  const restoreFull = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    if (!confirm("همه‌چیزِ پنل (ربات، حسابداری، تنظیمات، رسیدها) با این فایل جایگزین می‌شود. "
+      + "پیش از آن یک نسخه از وضعیتِ فعلی روی سرور نگه داشته می‌شود. ادامه می‌دهید؟")) return;
+    setBusy("restore"); setMsg(null);
+    try {
+      const res = await fetch(`${API_URL}/api/admin/backup/full/restore`, {
+        method: "POST", headers: { ...H, "Content-Type": "application/zip" }, body: file,
+      });
+      if (res.status === 413) throw new Error("فایل برای وب‌سرور بزرگ است؛ از دستورِ nexora restore روی سرور استفاده کنید.");
+      const j = await okJson(res, "بازیابی ناموفق بود");
+      setMsg({ t: j.botWarning ? "err" : "ok",
+        m: `بازیابی شد: ${faNum(j.restored.length)} فایل، از پشتیبانِ نسخه‌ی ${j.from || "?"}.`
+          + (j.botWarning ? ` ${j.botWarning}` : "") });
+      onRestored();
+    } catch (err) { setMsg({ t: "err", m: errMsg(err) }); }
+    finally { setBusy(""); }
+  };
 
   const exportConfig = async () => {
-    setBusy(true); setMsg(null);
+    setBusy("cfg"); setMsg(null);
     try {
-      const res = await fetch(`${API_URL}/api/admin/export`, { headers: { "X-Admin-Password": password } });
-      if (!res.ok) throw new Error();
-      const data = await res.json();
-      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `nexora-backup-${new Date().toISOString().slice(0, 10)}.json`;
-      a.click();
-      setTimeout(() => URL.revokeObjectURL(url), 2000);
-      setMsg({ type: "ok", text: "فایل پشتیبان دانلود شد" });
-    } catch {
-      setMsg({ type: "error", text: "دریافت پشتیبان ناموفق بود" });
-    } finally { setBusy(false); }
+      const res = await fetch(`${API_URL}/api/admin/export`, { headers: H });
+      const data = await okJson(res, "دریافت تنظیمات ناموفق بود");
+      save(new Blob([JSON.stringify(data, null, 2)], { type: "application/json" }),
+        `nexora-settings-${new Date().toISOString().slice(0, 10)}.json`);
+    } catch (e) { setMsg({ t: "err", m: errMsg(e) }); }
+    finally { setBusy(""); }
   };
 
   const importConfig = async (e) => {
     const file = e.target.files?.[0];
+    e.target.value = "";
     if (!file) return;
-    if (!confirm("تنظیمات فعلی با محتوای این فایل جایگزین می‌شود. مطمئن هستید؟")) {
-      e.target.value = ""; return;
-    }
-    setBusy(true); setMsg(null);
-    // «فایل معتبر نیست» فقط برای فایل؛ پیش‌تر قطعیِ شبکه هم همین را می‌گفت
+    if (!confirm("فقط تنظیماتِ صفحه‌ی اشتراک با این فایل جایگزین می‌شود. ادامه می‌دهید؟")) return;
     let parsed;
-    try {
-      parsed = JSON.parse(await file.text());
-    } catch {
-      setMsg({ type: "error", text: "فایل معتبر نیست — JSONِ خوانا نبود" });
-      setBusy(false); e.target.value = ""; return;
-    }
+    try { parsed = JSON.parse(await file.text()); }
+    catch { setMsg({ t: "err", m: "این فایل JSONِ تنظیمات نیست" }); return; }
+    setBusy("cfg"); setMsg(null);
     try {
       const res = await fetch(`${API_URL}/api/admin/import`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "X-Admin-Password": password },
+        method: "POST", headers: { ...H, "Content-Type": "application/json" },
         body: JSON.stringify(parsed),
       });
       const data = await okJson(res, "بازیابی ناموفق بود");
-      // پیامِ بکند می‌گوید کدام بخش‌های تازه‌تر دست نخوردند
-      setMsg({ type: "ok", text: data.message || "تنظیمات بازیابی شد" });
+      setMsg({ t: "ok", m: data.message || "تنظیمات بازیابی شد" });
       onRestored();
-    } catch (err) {
-      setMsg({ type: "error", text: errMsg(err) });
-    } finally { setBusy(false); e.target.value = ""; }
+    } catch (err) { setMsg({ t: "err", m: errMsg(err) }); }
+    finally { setBusy(""); }
   };
 
+  const spin = (k, Icon) => (busy === k ? <Loader2 size={14} className="animate-spin" /> : <Icon size={14} />);
   return (
     <div className="fx-card p-5 mb-4">
       <div className="text-[14px] font-semibold text-white mb-1 flex items-center gap-2">
         <Download size={15} style={{ color: "var(--accent-2)" }} /> پشتیبان‌گیری و بازیابی
       </div>
-      <p className="text-[13px] mb-4 leading-relaxed" style={{ color: "var(--muted)" }}>
-        قبل از هر تغییر بزرگ، یک نسخه پشتیبان بگیرید. هنگام بازیابی، از نسخه‌ی فعلی خودکار یک کپی روی سرور نگه داشته می‌شود.
+      <p className="text-[12.5px] mb-3" style={{ color: "var(--muted)" }}>
+        یک فایل برای کلِ پنل: ربات و مشتری‌ها، حسابداری، تانل‌ها، تنظیمات، رسیدها و لوگوها.
+        توکن‌های ربات هم داخلش است؛ جای امنی نگهش دارید.
       </p>
-
-      {msg && (
-        <div className="rounded-xl p-3 mb-3 flex items-center gap-2 text-[13px]"
-          style={{
-            background: msg.type === "error" ? "rgba(248,113,113,.1)" : "rgba(52,211,153,.1)",
-            border: `1px solid ${msg.type === "error" ? "rgba(248,113,113,.3)" : "rgba(52,211,153,.3)"}`,
-            color: msg.type === "error" ? "var(--danger)" : "var(--ok)",
-          }}>
-          {msg.type === "error" ? <AlertTriangle size={14} /> : <CheckCircle2 size={14} />} {msg.text}
+      <Msg msg={msg} />
+      <div className="grid grid-cols-2 gap-2">
+        <button onClick={downloadFull} disabled={!!busy} className="fx-btn flex items-center justify-center gap-2 py-2.5 text-[13px]">
+          {spin("full", Download)} دریافت پشتیبانِ کامل
+        </button>
+        <label className={`fx-btn-g flex items-center justify-center gap-2 py-2.5 text-[13px] ${busy ? "opacity-60" : "cursor-pointer"}`}>
+          {spin("restore", Upload)} بازیابی از فایل
+          <input type="file" accept=".zip,application/zip" onChange={restoreFull} className="hidden" disabled={!!busy} />
+        </label>
+      </div>
+      <button onClick={() => setMore(!more)} className="mt-3 text-[12px] flex items-center gap-1" style={{ color: "var(--dim)" }}>
+        <ChevronDown size={12} style={{ transform: more ? "rotate(180deg)" : "none" }} /> فقط تنظیماتِ صفحه‌ی اشتراک (فایلِ قدیمی JSON)
+      </button>
+      {more && (
+        <div className="grid grid-cols-2 gap-2 mt-2">
+          <button onClick={exportConfig} disabled={!!busy} className="fx-btn-g flex items-center justify-center gap-2 py-2 text-[12.5px]">
+            {spin("cfg", Download)} دریافتِ تنظیمات
+          </button>
+          <label className="fx-btn-g flex items-center justify-center gap-2 py-2 text-[12.5px] cursor-pointer">
+            <Upload size={13} /> بازیابیِ تنظیمات
+            <input type="file" accept="application/json" onChange={importConfig} className="hidden" disabled={!!busy} />
+          </label>
         </div>
       )}
+    </div>
+  );
+}
 
-      <div className="fx-g3 grid grid-cols-2 gap-3">
-        <button onClick={exportConfig} disabled={busy} className="fx-btn-g flex items-center justify-center gap-2 py-3 text-[13px]">
-          {busy ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />} دریافت پشتیبان
+/**
+ * The management bot (docs/specs/2026-10-01-admin-bot-backup-ui.md, part B):
+ * a private bot for the owner that sends the full backup on a schedule, shows
+ * status and sales, and takes the server/tunnel alerts out of the bot his
+ * customers buy from.
+ */
+const EVERY_FA = { 0: "خاموش", 6: "۶ ساعت", 12: "۱۲ ساعت", 24: "روزی یک‌بار" };
+
+export function AdminBotCard({ password }) {
+  const [d, setD] = useState(null);
+  const [tok, setTok] = useState("");
+  const [mon, setMon] = useState("");
+  const [ids, setIds] = useState("");
+  const [every, setEvery] = useState(24);
+  const [more, setMore] = useState(false);
+  const [busy, setBusy] = useState("");
+  const [msg, setMsg] = useState(null);
+  const H = { "X-Admin-Password": password, "Content-Type": "application/json" };
+
+  const fill = (j) => {
+    setD(j);
+    setTok(j.token || "");
+    setMon(j.monitorToken || "");
+    setIds((j.admins && j.admins.length ? j.admins : (j.suggestAdmin ? [j.suggestAdmin] : [])).join(", "));
+    setEvery(j.backupEvery ?? 24);
+  };
+  useEffect(() => {
+    fetch(`${API_URL}/api/admin/adminbot`, { headers: H })
+      .then((r) => okJson(r, "تنظیمِ ربات مدیریت خوانده نشد")).then(fill)
+      .catch((e) => setMsg({ t: "err", m: errMsg(e) }));
+  }, [password]);
+
+  const save = async () => {
+    setBusy("save"); setMsg(null);
+    try {
+      const r = await fetch(`${API_URL}/api/admin/adminbot`, {
+        method: "PUT", headers: H,
+        body: JSON.stringify({ token: tok, monitorToken: mon, backupEvery: every,
+          admins: ids.split(/[\s,،]+/).filter(Boolean) }),
+      });
+      const j = await okJson(r, "ذخیره نشد");
+      fill(j);
+      const u = j.usernames && j.usernames.token;
+      setMsg({ t: "ok", m: u ? `ذخیره شد: @${u}. حالا در تلگرام این ربات را باز کنید و Start بزنید، بعد «آزمایش».`
+        : "ذخیره شد" });
+    } catch (e) { setMsg({ t: "err", m: errMsg(e) }); }
+    finally { setBusy(""); }
+  };
+
+  const test = async () => {
+    setBusy("test"); setMsg(null);
+    try {
+      const r = await fetch(`${API_URL}/api/admin/adminbot/test`, { method: "POST", headers: H });
+      const j = await okJson(r, "آزمایش انجام نشد");
+      const bad = j.results.filter((x) => !x.ok);
+      setMsg(bad.length
+        ? { t: "err", m: bad.map((x) => `ربات ${x.bot} ← ${x.to}: ${x.why}`).join(" · ") }
+        : { t: "ok", m: "رسید. منوی ربات مدیریت را در تلگرام ببینید." });
+    } catch (e) { setMsg({ t: "err", m: errMsg(e) }); }
+    finally { setBusy(""); }
+  };
+
+  if (!d) return msg ? <Msg msg={msg} /> : null;
+  return (
+    <div className="fx-card p-5 mb-4">
+      <div className="text-[14px] font-semibold text-white mb-1 flex items-center gap-2">
+        <ShieldCheck size={15} style={{ color: "var(--accent-2)" }} /> ربات مدیریت
+        {d.hasToken && <span className="text-[11.5px] font-normal px-2 py-0.5 rounded-full"
+          style={{ background: "var(--ok-soft)", color: "var(--ok)" }}>وصل</span>}
+      </div>
+      <p className="text-[12.5px] mb-3" style={{ color: "var(--muted)" }}>
+        یک رباتِ جدا فقط برای خودتان: پشتیبانِ خودکار، وضعیتِ سرور، فروشِ امروز، و هشدارهای
+        سرور و تانل (که دیگر به رباتِ فروش نمی‌روند). در BotFather یک رباتِ تازه بسازید.
+      </p>
+      <Msg msg={msg} />
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="توکنِ ربات مدیریت">
+          <input className="fx-input w-full" dir="ltr" value={tok} placeholder="123456:ABC…"
+            onChange={(e) => setTok(e.target.value)} />
+        </Field>
+        <Field label="شناسه‌ی عددیِ تلگرامِ مدیر (با کاما چندتا)">
+          <input className="fx-input w-full" dir="ltr" value={ids} placeholder="123456789"
+            onChange={(e) => setIds(e.target.value)} />
+        </Field>
+      </div>
+      <Field label="پشتیبانِ خودکار به همین ربات">
+        <Segmented value={every} onChange={setEvery}
+          items={(d.everyChoices || [0, 6, 12, 24]).map((h) => [h, EVERY_FA[h] || `${faNum(h)} ساعت`])} />
+      </Field>
+      <button onClick={() => setMore(!more)} className="mb-2 text-[12px] flex items-center gap-1" style={{ color: "var(--dim)" }}>
+        <ChevronDown size={12} style={{ transform: more ? "rotate(180deg)" : "none" }} /> هشدارهای سرور و تانل در رباتی جدا (اختیاری)
+      </button>
+      {more && (
+        <Field label="توکنِ ربات مانیتورینگ" hint="خالی یعنی هشدارها به همان ربات مدیریت می‌آیند">
+          <input className="fx-input w-full" dir="ltr" value={mon} placeholder="123456:ABC…"
+            onChange={(e) => setMon(e.target.value)} />
+        </Field>
+      )}
+      <div className="flex items-center gap-2 flex-wrap">
+        <button onClick={save} disabled={!!busy} className="fx-btn px-4 py-2 text-[13px] flex items-center gap-1.5">
+          {busy === "save" ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />} ذخیره
         </button>
-        <label className="fx-btn-g flex items-center justify-center gap-2 py-3 text-[13px] cursor-pointer">
-          <Upload size={14} /> بازیابی از فایل
-          <input type="file" accept="application/json" onChange={importConfig} className="hidden" disabled={busy} />
-        </label>
+        <button onClick={test} disabled={!!busy || !d.hasToken} className="fx-btn-g px-4 py-2 text-[13px] flex items-center gap-1.5">
+          {busy === "test" ? <Loader2 size={13} className="animate-spin" /> : <MessageCircle size={13} />} آزمایش
+        </button>
+        {d.lastBackup && (
+          <span className="text-[12px]" style={{ color: "var(--dim)" }}>
+            آخرین پشتیبانِ خودکار: {isoToJalaliStamp(d.lastBackup)}
+          </span>
+        )}
       </div>
     </div>
   );
