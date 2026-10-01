@@ -1161,8 +1161,6 @@ export function SettingsSection({ config, setConfig, password, onPasswordChanged
       <div className="fx-set-cols">
       <BackupCard password={password} onRestored={onRestored} />
 
-      <AdminBotCard password={password} />
-
       <ChangePasswordCard password={password} onPasswordChanged={onPasswordChanged} />
 
       </div>
@@ -1536,7 +1534,8 @@ export function BackupCard({ password, onRestored }) {
       </div>
       <p className="text-[12.5px] mb-3" style={{ color: "var(--muted)" }}>
         یک فایل برای کلِ پنل: ربات و مشتری‌ها، حسابداری، تانل‌ها، تنظیمات، رسیدها و لوگوها.
-        توکن‌های ربات هم داخلش است؛ جای امنی نگهش دارید.
+        توکن‌های ربات هم داخلش است؛ جای امنی نگهش دارید.{" "}
+        <a href="#/bot-backup" style={{ color: "var(--accent-2)" }}>ارسالِ خودکار با ربات مدیریت ›</a>
       </p>
       <Msg msg={msg} />
       <div className="grid grid-cols-2 gap-2">
@@ -1580,7 +1579,6 @@ export function AdminBotCard({ password }) {
   const [mon, setMon] = useState("");
   const [ids, setIds] = useState("");
   const [every, setEvery] = useState(24);
-  const [more, setMore] = useState(false);
   const [busy, setBusy] = useState("");
   const [msg, setMsg] = useState(null);
   const H = { "X-Admin-Password": password, "Content-Type": "application/json" };
@@ -1655,15 +1653,12 @@ export function AdminBotCard({ password }) {
         <Segmented value={every} onChange={setEvery}
           items={(d.everyChoices || [0, 6, 12, 24]).map((h) => [h, EVERY_FA[h] || `${faNum(h)} ساعت`])} />
       </Field>
-      <button onClick={() => setMore(!more)} className="mb-2 text-[12px] flex items-center gap-1" style={{ color: "var(--dim)" }}>
-        <ChevronDown size={12} style={{ transform: more ? "rotate(180deg)" : "none" }} /> هشدارهای سرور و تانل در رباتی جدا (اختیاری)
-      </button>
-      {more && (
-        <Field label="توکنِ ربات مانیتورینگ" hint="خالی یعنی هشدارها به همان ربات مدیریت می‌آیند">
-          <input className="fx-input w-full" dir="ltr" value={mon} placeholder="123456:ABC…"
-            onChange={(e) => setMon(e.target.value)} />
-        </Field>
-      )}
+      {/* The tunnel bot has its own page now (تانل ← ربات تانل); a token
+          folded in here was where the owner never found it. */}
+      <p className="text-[12px] mb-2" style={{ color: "var(--muted)" }}>
+        {d.hasMonitorToken ? "هشدارهای تانل و سرور به «ربات تانل» می‌روند." : "تا «ربات تانل» راه نیفتد، هشدارهای تانل و سرور همین‌جا می‌آیند."}{" "}
+        <a href="#/tun-bot" style={{ color: "var(--accent-2)" }}>ربات تانل ›</a>
+      </p>
       <div className="flex items-center gap-2 flex-wrap">
         <button onClick={save} disabled={!!busy} className="fx-btn px-4 py-2 text-[13px] flex items-center gap-1.5">
           {busy === "save" ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />} ذخیره

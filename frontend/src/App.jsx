@@ -25,6 +25,7 @@ import { BotReportSection } from "./sections/bot/stats";
 import { BotTextsSection } from "./sections/bot/texts";
 import { ThemesSection } from "./sections/bot/themes";
 import { BotUsersSection } from "./sections/bot/users";
+import { TunnelBotSection } from "./sections/bot/tunnelbot";
 import { MonitorSection } from "./sections/monitoring";
 import { AppsSection, BannersSection, FaqSection, LinksSection, OverviewSection, PopupSection, ReferralSection, ResellersSection, SettingsSection, VideosSection } from "./sections/subpage";
 import { LivePreview, SystemSection } from "./sections/system";
@@ -543,6 +544,7 @@ export default function App() {
           {active === "bot-preview" && <ProSection area="preview" feature="insights" password={password} brand={config?.brand} />}
           {active === "bot-stats" && <ProSection area="insights" feature="insights" password={password} />}
           {active === "bot-backup" && <BotBackupSection password={password} />}
+          {active === "tun-bot" && <TunnelBotSection password={password} />}
           {active === "popup" && <PopupSection config={config} setConfig={setConfig} />}
           {active === "banners" && <BannersSection config={config} setConfig={setConfig} />}
           {active === "referral" && <ReferralSection config={config} setConfig={setConfig} />}

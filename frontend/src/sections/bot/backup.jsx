@@ -11,11 +11,13 @@ import {
 import { errMsg, errText, faNum, okJson } from "../../lib/format";
 import { API_URL } from "../../lib/constants";
 import { ConfirmModal, InfoBox, Msg, SectionHead } from "../../ui/index";
+import { AdminBotCard, BackupCard } from "../subpage";
 
 export function BotBackupSection({ password }) {
   const [busy, setBusy] = useState(null);
   const [msg, setMsg] = useState(null);
   const [confirm, setConfirm] = useState(null);
+  const [old, setOld] = useState(false);
   useEffect(() => { if (msg) { const t = setTimeout(() => setMsg(null), 5000); return () => clearTimeout(t); } }, [msg]);
 
   const download = async () => {
@@ -76,8 +78,21 @@ export function BotBackupSection({ password }) {
 
   return (
     <div className="fx-anim">
-      <SectionHead title="بک‌آپ و بازیابی ربات"
-        desc="کاربران، سفارش‌ها، اشتراک‌ها، سکه‌ها و تنظیمات ربات." />
+      {/* The owner looked here for "a bot that takes a full backup every
+          time" (docs/specs/2026-10-01-bots-and-tunnel-mesh.md). Until 2.1.3
+          this page had only the bot-only JSON, and the full backup and the
+          management bot sat under «تنظیمات ظاهری», where no one looked. */}
+      <SectionHead title="ربات مدیریت و پشتیبان"
+        desc="یک فایل برای کلِ پنل، و یک ربات تلگرامِ جدا که همین فایل را خودکار برایتان می‌فرستد." />
+      <div className="fx-split">
+        <BackupCard password={password} onRestored={() => {}} />
+        <AdminBotCard password={password} />
+      </div>
+
+      <button onClick={() => setOld(!old)} className="text-[12.5px] px-1" style={{ color: "var(--dim)" }}>
+        {old ? "بستن" : "فقط دیتابیسِ ربات (فایلِ قدیمیِ JSON)"}
+      </button>
+      {old && (<>
       <Msg msg={msg} />
 
       <div className="fx-g2 grid grid-cols-2 gap-4 mb-4">
@@ -106,6 +121,7 @@ export function BotBackupSection({ password }) {
         قبل از آن یک نسخه‌ی امن از وضعیت فعلی کنار دیتابیس ذخیره می‌شود،
         پس اگر اشتباه شد چیزی از دست نمی‌رود.
       </InfoBox>
+      </>)}
 
       {confirm && (
         <ConfirmModal

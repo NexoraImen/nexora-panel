@@ -3,6 +3,68 @@
 Each entry says what was broken and why, not a list of commits.
 History before 2.0 lives with the 1.x line.
 
+## [2.1.3] - 2026-10-01
+
+### The backup bot was built, but where no one would look
+
+The full backup and the management bot (2.1.0) sat under «تنظیمات ظاهری», the
+appearance settings, while «ربات تلگرام» ← «بک‌آپ ربات», the page the owner
+opened to find them, offered only the old bot-only file. That page is now
+«ربات مدیریت و پشتیبان»: the full backup, and the management bot that sends
+the same file to Telegram on a schedule. Accounting's «تنظیمات و بک‌آپ» links
+to it.
+
+### A tunnel bot of its own
+
+«تانل» ← «ربات تانل» is a new page for a separate Telegram bot. In Telegram it
+has its own menu: 📡 تانل‌ها (each tunnel, its engine, on or off, its server
+online), 🩺 عیب‌یابی (each server's verdict and what to do), 🖥 سرورها, and 🔄
+بررسیِ دوباره. And it speaks up: when a server's connection turns bad it says
+so with what to do, and again when it recovers. Before, a broken tunnel showed
+only on the diagnosis page. Server health alerts go to it too.
+
+## [2.1.2] - 2026-10-01
+
+### Configs deleted in 3x-ui still showed in the mini app
+
+The cleanup only looked at configs the bot had marked active, while the mini
+app listed every config not marked deleted. A config the bot had switched off
+but 3x-ui had deleted was in neither, so it stayed. The cleanup now checks
+every listed config. And it says why: the bot users page has «همگام‌سازی با
+3x-ui», which runs it at once and names, shop by shop, what was removed or why
+not; `nexora sweep` prints the same on the server.
+
+### A customer who once blocked the bot was ignored forever
+
+When a broadcast could not reach someone who had blocked the bot, it set the
+same flag as a ban, and the bot ignores banned users. So a customer who
+unblocked the bot and pressed /start never got an answer again. "Left the
+bot" is its own mark now and clears the moment they write; a ban names who
+set it. Old unnamed flags are treated as "left": those customers get in when
+they come back, and it is on record in the bot events.
+
+### Ban or remove a bot user, for the owner and for resellers
+
+The users list has two new buttons. Ban: the bot and the mini app stop
+answering that person (the mini app used to let a banned user in). Remove:
+also deletes every config of theirs from 3x-ui and takes them off the list;
+orders and payments stay in the accounts. A reseller can do the same for its
+own customers only, and its configs are deleted through the billing core, so
+usage stays on its bill.
+
+### A volume reseller could not make configs from the portal
+
+The portal's «کانفیگ تازه» offered only volumes that had their own rate row.
+A reseller priced per GB had nothing to choose, or only «نامحدود». It now
+takes any volume, and «نامحدود» says what it costs: the monthly unlimited
+rate when the owner set one.
+
+### Tables, not boxes
+
+«واسطه‌ها و نرخ» lists resellers only; direct-customer groups open on demand,
+and a name is not repeated under itself. «قابلیت‌های نماینده‌ها» is four rows.
+The reseller's plan cards lost their repeated hints and three-line profit box.
+
 ## [2.1.1] - 2026-10-01
 
 ### The panel is calmer on every page, not only on six

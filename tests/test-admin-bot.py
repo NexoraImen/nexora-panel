@@ -298,5 +298,96 @@ out = AP._AdminBotApi().search("SHOP")
 check("config lookup: case-insensitive, usage, pending start shown in words",
       "shop_12" in out and "other" not in out and "از اولین اتصال" in out, out)
 
+# ═══════════════════════════════════════════════════════════
+head("The tunnel bot (docs/specs/2026-10-01-bots-and-tunnel-mesh.md)")
+# ═══════════════════════════════════════════════════════════
+# In 2.1.0 the "tunnel bot" was a token folded inside the management card:
+# no menu of its own, no page, and no alert when a tunnel broke.
+
+
+class TunApi:
+    def __init__(self):
+        self.calls = []
+
+    def tunnels(self):
+        self.calls.append("tn"); return "TUNNELS"
+
+    def diagnosis(self):
+        self.calls.append("dg"); return "DIAG"
+
+    def servers(self):
+        self.calls.append("sv"); return "SERVERS"
+
+    def recheck(self):
+        self.calls.append("rc"); return "RECHECK"
+
+
+b, tapi, st = FakeBot(), TunApi(), {}
+A.handle_tunnel(CFG, b, tapi, msg("/start", frm=STRANGER), st)
+A.handle_tunnel(CFG, b, tapi, cb("tn", frm=STRANGER), st)
+check("tunnel bot: a stranger gets nothing", not b.out and not tapi.calls)
+A.handle_tunnel(CFG, b, tapi, msg("/start", chat_type="group"), st)
+check("… nor the owner in a group", not b.out)
+A.handle_tunnel(CFG, b, tapi, msg("/start"), st)
+_tb = [x["callback_data"] for r in b.out[-1][3]["inline_keyboard"] for x in r]
+check("the owner gets the tunnel menu, every button handled",
+      "ربات تانل" in b.out[-1][2] and set(_tb) == {"tn", "dg", "sv", "rc"}, _tb)
+for k, want in (("tn", "TUNNELS"), ("dg", "DIAG"), ("sv", "SERVERS"), ("rc", "RECHECK")):
+    A.handle_tunnel(CFG, b, tapi, cb(k), st)
+check("each button shows its own answer", [o[2] for o in b.out[-4:]] == ["TUNNELS", "DIAG", "SERVERS", "RECHECK"],
+      [o[2] for o in b.out[-4:]])
+
+ch = A.level_changes({}, {"1": "ok", "2": "bad", "3": "unknown"})
+check("first look: only what is not ok is reported, unknown never", ch == [("2", None, "bad")], ch)
+ch = A.level_changes({"1": "ok", "2": "bad"}, {"1": "warn", "2": "ok"})
+check("a change either way is reported (broke, recovered)",
+      sorted(ch) == [("1", "ok", "warn"), ("2", "bad", "ok")], ch)
+check("no change, no message", A.level_changes({"1": "bad"}, {"1": "bad"}) == [])
+
+# the panel side: answers without Pro, and the alert tick
+_was = (AP.__dict__.get("TUNNELS_OK"), AP.__dict__.get("TUN"), AP.__dict__.get("_link_diag_data"))
+AP.TUNNELS_OK = False
+check("without the tunnel section the bot says so, it does not fail",
+      AP._TunnelBotApi().tunnels() == AP._TUN_OFF and AP._TunnelBotApi().diagnosis() == AP._TUN_OFF)
+
+
+class FakeTUN:
+    @staticmethod
+    def list_tunnels():
+        return [{"id": 1, "name": "fi-1", "engineName": "rathole", "status": "running", "nodeOnline": True},
+                {"id": 2, "name": "de-1", "engineName": "gost", "status": "stopped", "nodeOnline": False}]
+
+    @staticmethod
+    def list_nodes():
+        return [{"name": "iran-1", "role": "iran", "online": True, "running_count": 1, "tunnel_count": 2}]
+
+
+DIAG = {"nodes": [{"id": 7, "name": "iran-1", "verdict": {"level": "ok", "title": "سالم"}}]}
+AP.TUNNELS_OK, AP.TUN = True, FakeTUN
+AP._link_diag_data = lambda: DIAG
+_t = AP._TunnelBotApi().tunnels()
+check("tunnels: name, engine, on/off, server offline said",
+      "fi-1" in _t and "rathole" in _t and "de-1" in _t and "آفلاین" in _t, _t)
+check("servers: role in Persian and running/total", "ایران" in AP._TunnelBotApi().servers()
+      and "1/2" in AP._TunnelBotApi().servers())
+
+A.update(DATA, token="123:ADMIN", monitorToken="456:TUN", admins=[OWNER])
+SENT.clear()
+AP._TUN_LEVELS.clear()
+check("first pass, all ok: no message", AP._tunnel_alert_tick() == 0 and not SENT)
+DIAG["nodes"][0]["verdict"] = {"level": "bad", "title": "تانل قطع است", "fix": "پورت را عوض کنید"}
+AP._tunnel_alert_tick()
+check("a tunnel breaks: the tunnel bot tells the owner, with what to do",
+      SENT and SENT[-1][0] == "456:TUN" and "تانل قطع است" in SENT[-1][2] and "پورت" in SENT[-1][2], SENT[-1:])
+n = len(SENT)
+AP._tunnel_alert_tick()
+check("still broken: not again", len(SENT) == n)
+DIAG["nodes"][0]["verdict"] = {"level": "ok", "title": "سالم"}
+AP._tunnel_alert_tick()
+check("recovered: said once", len(SENT) == n + 1 and "سالم" in SENT[-1][2])
+st_, j = call("/api/admin/adminbot/test", "POST", {})
+check("test sends the tunnel bot its own menu", any(r["bot"] == "تانل" and r["ok"] for r in j.get("results", [])), j)
+AP.TUNNELS_OK, AP.TUN, AP._link_diag_data = _was
+
 print(f"\n{_ok} passed, {_fail} failed")
 sys.exit(1 if _fail else 0)

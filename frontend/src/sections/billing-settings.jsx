@@ -114,6 +114,17 @@ export function BillingSettings({ password }) {
       <SectionHead title="تنظیمات و بک‌آپ"
         desc="مسیر دیتابیس ۳x-ui و پشتیبان‌گیری از نرخ‌ها و پرداخت‌ها." />
 
+      {/* The whole-panel backup and its bot live on one page; this page's
+          file holds accounting only (the owner looked for the full one here). */}
+      <a href="#/bot-backup" className="fx-card p-4 flex items-center justify-between gap-3"
+        style={{ textDecoration: "none" }}>
+        <span className="text-[13px]" style={{ color: "var(--dim)" }}>
+          <b className="text-white">پشتیبانِ کاملِ پنل و ربات مدیریت</b>
+          {" "}· یک فایل برای همه‌چیز، و ارسالِ خودکار به تلگرام
+        </span>
+        <span className="text-[12.5px] shrink-0" style={{ color: "var(--accent-2)" }}>باز کن ›</span>
+      </a>
+
       {msg && <Msg msg={msg} />}
 
       {!info ? (

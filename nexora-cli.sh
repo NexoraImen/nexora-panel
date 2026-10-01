@@ -1057,6 +1057,13 @@ PY
     fi
     ;;
 
+  sweep)
+    # Run the config cleanup now and say why, shop by shop: what 3x-ui has,
+    # what the bot still lists, what was removed or why not.
+    "$INSTALL_DIR/backend/venv/bin/python" "$INSTALL_DIR/scripts/sub-sweep.py" \
+      || bad "The cleanup could not run (see the message above)"
+    ;;
+
   usage-why)
     # چرا عددِ مصرف این است — نسخه‌ی پنل، وضعیتِ ردیابیِ ریست، و
     # مصرفِ هر کانفیگ کنارِ آنچه از دوره‌های ریست‌شده بانک شده.
@@ -1358,6 +1365,7 @@ PYEOF
     echo -e "  ${C_WHITE}nexora check${C_RESET}                  ${C_DIM}full report: versions, jobs, firewall, billing, bot${C_RESET}"
     echo -e "  ${C_WHITE}nexora doctor${C_RESET}                 ${C_DIM}check and auto-fix common problems${C_RESET}"
     echo -e "  ${C_WHITE}nexora billing-why${C_RESET}            ${C_DIM}why a config shows as having no rate${C_RESET}"
+    echo -e "  ${C_WHITE}nexora sweep${C_RESET}                  ${C_DIM}remove configs deleted in 3x-ui from the bot, and say why${C_RESET}"
     echo -e "  ${C_WHITE}nexora usage-why${C_RESET}              ${C_DIM}why the usage figure is what it is${C_RESET}"
     echo -e "  ${C_WHITE}nexora import-topups${C_RESET}          ${C_DIM}bring old prepaid top-ups into the books${C_RESET}"
     echo -e "  ${C_WHITE}nexora repair-orders${C_RESET}          ${C_DIM}fix wallet order statuses written before 1.34${C_RESET}"

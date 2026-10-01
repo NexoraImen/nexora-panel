@@ -8,12 +8,12 @@ import React, { useState, useEffect, useMemo, useRef } from "react";
 import { useDebouncedChange } from "../../lib/hooks";
 import { createPortal } from "react-dom";
 import {
-  AlertTriangle, ChevronLeft, Loader2, Package, RefreshCw, Send, Users, X,
+  AlertTriangle, Ban, ChevronLeft, Loader2, Package, RefreshCw, Send, Trash2, Users, X,
 } from "lucide-react";
 import { adminSrc } from "../../lib/botsrc";
 import { isoToJalaliLabel } from "../../ui/jalali";
 import { daysLeft, faNum, fmtBytes, fmtDate } from "../../lib/format";
-import { Avatar, EmptyState, FilterBar, InfoBox, Modal, Msg, PageSkeleton, Pager, SectionHead, StatStrip, StatusPill } from "../../ui/index";
+import { Avatar, ConfirmModal, EmptyState, FilterBar, InfoBox, Modal, Msg, PageSkeleton, Pager, SectionHead, StatStrip, StatusPill } from "../../ui/index";
 
 // فیلترهای بخش کاربران — کلیدها باید عیناً با _USER_FILTERS در
 // backend/app.py بخوانند.
@@ -59,6 +59,11 @@ export function BotUsersSection({ password, src }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(null);
   const seq = useRef(0);
+  // ban / remove (docs/specs/2026-10-01-admin-bot-backup-ui.md): the owner
+  // asked for both, for himself and for resellers, for security cases
+  const [ask, setAsk] = useState(null);       // {u, kind: "block"|"unblock"|"delete"}
+  const [note, setNote] = useState(null);
+  const [sweeping, setSweeping] = useState(false);
 
   const load = async (opts = {}) => {
     const query = opts.q !== undefined ? opts.q : q;
@@ -111,6 +116,42 @@ export function BotUsersSection({ password, src }) {
   const users = d.users;
   const pages = Math.ceil(d.total / PAGE) || 1;
 
+  const act = async () => {
+    const { u, kind } = ask;
+    setAsk(null);
+    try {
+      if (kind === "delete") {
+        const r = await S.removeUser(u.tg_id);
+        setNote({ t: "ok", m: `«${u.first_name || u.tg_id}» حذف شد${r.configs ? ` و ${faNum(r.configs)} کانفیگش از 3x-ui پاک شد` : ""}.` });
+      } else {
+        await S.block(u.tg_id, kind === "block");
+        setNote({ t: "ok", m: kind === "block"
+          ? `«${u.first_name || u.tg_id}» مسدود شد: ربات و مینی‌اپ دیگر جوابش را نمی‌دهند.`
+          : `مسدودیِ «${u.first_name || u.tg_id}» برداشته شد.` });
+      }
+      load();
+    } catch (e) { setNote({ t: "err", m: e.message }); }
+  };
+
+  /* Configs deleted in 3x-ui: remove them from the bot now, and say why
+     for any that stay (the owner saw them linger with no reason given). */
+  const sweep = async () => {
+    setSweeping(true); setNote(null);
+    try {
+      const r = await S.sweep();
+      if (!r.ok) { setNote({ t: "err", m: `3x-ui خوانده نشد: ${r.why}` }); return; }
+      const gone = r.shops.reduce((a, x) => a + (x.gone || 0), 0);
+      const stuck = r.shops.filter((x) => x.skipped || x.error);
+      setNote(stuck.length
+        ? { t: "err", m: `${faNum(gone)} کانفیگِ پاک‌شده برداشته شد. در ${faNum(stuck.length)} فروشگاه کاری نشد: `
+            + stuck.map((x) => x.error || x.why).join(" · ") }
+        : { t: "ok", m: gone ? `${faNum(gone)} کانفیگ که در 3x-ui پاک شده بود از ربات و مینی‌اپ برداشته شد.`
+            : `همه‌ی کانفیگ‌های ربات در 3x-ui هستند (${faNum(r.xuiClients)} کانفیگ در پنل).` });
+      load();
+    } catch (e) { setNote({ t: "err", m: e.message }); }
+    finally { setSweeping(false); }
+  };
+
   // خلاصه‌ی همین صفحه — بدون درخواست تازه
   const rows = d.users || [];
   const walletSum = rows.reduce((a, u) => a + (Number(u.balance) || 0), 0);
@@ -123,11 +164,21 @@ export function BotUsersSection({ password, src }) {
       <SectionHead title="کاربران ربات"
         desc="هر کسی که با ربات تعامل داشته — با سابقه‌ی خرید، شماره تماس و امکان پیام مستقیم."
         action={
-          <button onClick={() => load()} disabled={loading}
-            className="fx-btn-g px-3 py-2.5 text-[13px] flex items-center gap-1.5">
-            <RefreshCw size={13} /> بازخوانی
-          </button>
+          <div className="flex items-center gap-2">
+            {S.sweep && (
+              <button onClick={sweep} disabled={sweeping}
+                title="کانفیگ‌هایی را که در 3x-ui پاک شده‌اند از ربات و مینی‌اپ بردار"
+                className="fx-btn-g px-3 py-2.5 text-[13px] flex items-center gap-1.5">
+                {sweeping ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />} همگام‌سازی با 3x-ui
+              </button>
+            )}
+            <button onClick={() => load()} disabled={loading}
+              className="fx-btn-g px-3 py-2.5 text-[13px] flex items-center gap-1.5">
+              <RefreshCw size={13} /> بازخوانی
+            </button>
+          </div>
         } />
+      <Msg msg={note} />
 
       {/* شمارِ کلِ دسته‌ها، از `counts` بکند — نه جمعِ همین صفحه. کاشیِ
           قبلی «کیف پول این صفحه» فقط چهل ردیفِ جاری را جمع می‌زد و با
@@ -220,6 +271,16 @@ export function BotUsersSection({ password, src }) {
                     title="پیام به این کاربر" aria-label={`پیام به ${u.first_name || u.tg_id}`}>
                     <Send size={13} />
                   </button>
+                  <button onClick={() => setAsk({ u, kind: u.is_blocked === 1 ? "unblock" : "block" })}
+                    className="fx-ico-btn" style={u.is_blocked === 1 ? { color: "var(--danger)" } : undefined}
+                    title={u.is_blocked === 1 ? "برداشتنِ مسدودی" : "مسدود کردن"}
+                    aria-label={`${u.is_blocked === 1 ? "برداشتنِ مسدودیِ" : "مسدود کردنِ"} ${u.first_name || u.tg_id}`}>
+                    <Ban size={13} />
+                  </button>
+                  <button onClick={() => setAsk({ u, kind: "delete" })} className="fx-ico-btn"
+                    title="حذفِ کاربر و کانفیگ‌هایش" aria-label={`حذفِ ${u.first_name || u.tg_id}`}>
+                    <Trash2 size={13} />
+                  </button>
                   <button onClick={() => setDetail(u.tg_id)} className="fx-ico-btn"
                     title="پرونده‌ی کاربر" aria-label={`پرونده‌ی ${u.first_name || u.tg_id}`}>
                     <ChevronLeft size={14} />
@@ -234,6 +295,18 @@ export function BotUsersSection({ password, src }) {
           <Pager page={page} pages={pages} total={d.total} perPage={PAGE}
             onPage={(n) => go((n - 1) * PAGE)} />
         </>
+      )}
+
+      {ask && (
+        <ConfirmModal
+          title={ask.kind === "delete" ? "حذفِ کاربر" : ask.kind === "block" ? "مسدود کردنِ کاربر" : "برداشتنِ مسدودی"}
+          desc={ask.kind === "delete"
+            ? `«${ask.u.first_name || ask.u.tg_id}» مسدود می‌شود، همه‌ی کانفیگ‌هایش از 3x-ui پاک می‌شود و از فهرست می‌رود. سفارش‌ها و پرداخت‌هایش در حساب‌ها می‌ماند. برگشت ندارد.`
+            : ask.kind === "block"
+              ? `ربات و مینی‌اپ دیگر به «${ask.u.first_name || ask.u.tg_id}» جواب نمی‌دهند. کانفیگ‌هایش کار می‌کنند، مگر حذفش کنید.`
+              : `«${ask.u.first_name || ask.u.tg_id}» دوباره می‌تواند از ربات استفاده کند.`}
+          confirmLabel={ask.kind === "delete" ? "حذف کن" : ask.kind === "block" ? "مسدود کن" : "بردار"}
+          onConfirm={act} onCancel={() => setAsk(null)} />
       )}
 
       {detail && (

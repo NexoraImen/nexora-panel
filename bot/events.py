@@ -112,6 +112,22 @@ KINDS = {
         "label": "کانفیگ ساخته شد",
         "level": "ok", "alert": False,
     },
+    "user_back": {
+        "label": "کاربری که پیش‌تر ربات را بلاک کرده بود برگشت و دوباره پذیرفته شد",
+        "level": "info", "alert": False,
+    },
+    "user_blocked": {
+        "label": "کاربر مسدود شد",
+        "level": "warn", "alert": False,
+    },
+    "user_unblocked": {
+        "label": "مسدودیِ کاربر برداشته شد",
+        "level": "info", "alert": False,
+    },
+    "user_deleted": {
+        "label": "کاربر حذف شد و کانفیگ‌هایش پاک شد",
+        "level": "warn", "alert": False,
+    },
     "signup": {
         "label": "کاربر تازه",
         "level": "info", "alert": False,

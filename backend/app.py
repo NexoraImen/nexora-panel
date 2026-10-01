@@ -2400,6 +2400,78 @@ def bot_users(q: str = "", limit: int = 50, offset: int = 0,
                        filter=filter, sort=sort, counts=counts)
 
 
+def _user_block(t, tg_id, block, by):
+    """
+    Ban or unban one bot user of shop `t`, for the owner and for a reseller
+    (one core, two thin routes). A banned user gets no answer from the bot
+    and a 403 from the mini app; their configs keep working until deleted.
+    """
+    h = _bot_handlers()
+    d = h.DB.TenantDB(t["id"])
+    u = d.get_user(int(tg_id))
+    if not u or u.get("deleted_at"):
+        raise HTTPException(404, detail="این کاربر در این ربات نیست")
+    d.exec("UPDATE users SET is_blocked=?, blocked_by=? WHERE tenant_id=? AND id=?",
+           (1 if block else 0, by if block else None, t["id"], u["id"]))
+    d.log("user_blocked" if block else "user_unblocked", u["id"], {"by": by})
+    return {"ok": True, "blocked": bool(block)}
+
+
+def _user_delete(t, tg_id, by):
+    """
+    Remove one bot user: ban, delete every config of theirs from 3x-ui, take
+    them off the list. Orders and payments stay, so the accounts still add
+    up. A reseller's configs go through the billing core (`_portal_delete_core`),
+    the same as the portal's delete button, so usage and the period's share
+    stay on that reseller's bill. Any config that could not be deleted is
+    named; the user stays listed until it is.
+    """
+    h = _bot_handlers()
+    d = h.DB.TenantDB(t["id"])
+    u = d.get_user(int(tg_id))
+    if not u or u.get("deleted_at"):
+        raise HTTPException(404, detail="این کاربر در این ربات نیست")
+    subs = d.q("SELECT * FROM subscriptions WHERE tenant_id=? AND user_id=? "
+               "AND deleted_at IS NULL", (t["id"], u["id"]))
+    now = datetime.now().isoformat(timespec="seconds")
+    failed = []
+    for s in subs:
+        try:
+            if t.get("parent_id"):
+                core_del = globals().get("_portal_delete_core")
+                if core_del is None:
+                    raise RuntimeError("billing core (Pro) not loaded")
+                core_del(t, s["client_email"], by_whom=f"user removed by {by}")
+            else:
+                h.Ctx(h.Bot(t["bot_token"]), t).xui.delete_client(
+                    s["inbound_id"], s["client_uuid"], email=s["client_email"])
+            d.exec("UPDATE subscriptions SET is_active=0, deleted_at=?, deleted_why='user_deleted' "
+                   "WHERE tenant_id=? AND id=?", (now, t["id"], s["id"]))
+        except Exception as e:
+            log.warning("deleting config %s of user %s failed: %s", s["client_email"], tg_id, e)
+            failed.append(f"{s['client_email']}: {str(e)[:100]}")
+    d.exec("UPDATE users SET is_blocked=1, blocked_by=? WHERE tenant_id=? AND id=?",
+           (by, t["id"], u["id"]))
+    if failed:
+        raise HTTPException(502, detail="کاربر مسدود شد ولی این کانفیگ‌ها از 3x-ui پاک نشدند: "
+                                        + "، ".join(failed))
+    d.exec("UPDATE users SET deleted_at=? WHERE tenant_id=? AND id=?", (now, t["id"], u["id"]))
+    d.log("user_deleted", u["id"], {"by": by, "configs": len(subs)})
+    return {"ok": True, "configs": len(subs)}
+
+
+@app.post("/api/admin/bot/users/{tg_id}/block")
+def bot_user_block(tg_id: int, body: dict, x_admin_password: str = Header(...)):
+    check_auth(x_admin_password)
+    return _user_block(_root_tenant_row(), tg_id, bool((body or {}).get("block")), "owner")
+
+
+@app.delete("/api/admin/bot/users/{tg_id}")
+def bot_user_delete(tg_id: int, x_admin_password: str = Header(...)):
+    check_auth(x_admin_password)
+    return _user_delete(_root_tenant_row(), tg_id, "owner")
+
+
 def _users_page(tid, q="", limit=50, offset=0, filter="all", sort="new",
                 counts=1):
     """
@@ -2411,7 +2483,8 @@ def _users_page(tid, q="", limit=50, offset=0, filter="all", sort="new",
     if not con:
         return {"users": [], "dbReady": False}
 
-    where = [_USER_FILTERS.get(filter, "1=1")]
+    # removed users are off the list; their orders stay for the accounts
+    where = [_USER_FILTERS.get(filter, "1=1"), "u.deleted_at IS NULL"]
     params = []
     if q:
         like = f"%{q}%"
@@ -2432,8 +2505,10 @@ def _users_page(tid, q="", limit=50, offset=0, filter="all", sort="new",
             WHERE o.user_id=u.id AND {SQL_REAL_BUY}) AS ordersCount,
           (SELECT COALESCE(SUM(o.amount),0) FROM orders o {SQL_PLAN_JOIN}
             WHERE o.user_id=u.id AND {SQL_REAL_BUY}) AS spent,
-          (SELECT COUNT(*) FROM subscriptions s WHERE s.user_id=u.id) AS subsCount,
           (SELECT COUNT(*) FROM subscriptions s WHERE s.user_id=u.id
+            AND s.deleted_at IS NULL) AS subsCount,
+          (SELECT COUNT(*) FROM subscriptions s WHERE s.user_id=u.id
+            AND s.deleted_at IS NULL
             AND s.is_active=1 AND (s.expires_at IS NULL
             OR s.expires_at > CURRENT_TIMESTAMP)) AS activeSubs
         FROM users u
@@ -2461,7 +2536,7 @@ def _users_page(tid, q="", limit=50, offset=0, filter="all", sort="new",
                 sel = ", ".join(
                     f'SUM(CASE WHEN ({cond}) THEN 1 ELSE 0 END) AS "{key}"'
                     for key, cond in _USER_FILTERS.items())
-                row = con.execute(f"SELECT {sel} FROM users u").fetchone()
+                row = con.execute(f"SELECT {sel} FROM users u WHERE u.deleted_at IS NULL").fetchone()
                 n_counts = {k: int(row[k] or 0) for k in _USER_FILTERS}
             except Exception:
                 log.debug("شمارش فیلترها ناموفق", exc_info=True)
@@ -4484,6 +4559,7 @@ def _sub_confirm_missing(h, t, missing):
     try:
         x = h.Ctx(h.Bot(t["bot_token"]), t).xui
         if not x.inbounds():
+            _SUB_WHY[t["id"]] = "the shop's 3x-ui API listed no inbounds"
             return None
         found = {}
         for s in missing:
@@ -4491,11 +4567,18 @@ def _sub_confirm_missing(h, t, missing):
             if isinstance(c, dict) and c:
                 found[s["client_email"]] = _sub_api_client(c)
         if not x.inbounds():
+            _SUB_WHY[t["id"]] = "the shop's 3x-ui API stopped answering mid-check"
             return None
+        _SUB_WHY[t["id"]] = f"asked the shop's 3x-ui API: {len(found)} of {len(missing)} still there"
         return found
     except Exception as e:
         log.warning("sub sweep: shop %s: 3x-ui API not reachable: %s", t["id"], e)
+        _SUB_WHY[t["id"]] = f"the shop's 3x-ui API is not reachable: {type(e).__name__}: {str(e)[:120]}"
         return None
+
+
+#: Why the last pass of each shop decided what it did, for the report below.
+_SUB_WHY = {}
 
 
 def _sub_lifecycle_shop(h, t, index, now):
@@ -4503,11 +4586,17 @@ def _sub_lifecycle_shop(h, t, index, now):
     d = h.DB.TenantDB(t["id"])
     days = h.core.delete_after_days(h.DB.tenant_settings(t["id"]))
     out = {"gone": 0, "started": 0, "ended": 0, "warned": 0, "deleted": 0,
-           "skipped": ""}
+           "skipped": "", "missing": [], "checked": 0, "why": ""}
+    _SUB_WHY.pop(t["id"], None)
+    # Every config the bot or the mini app still lists, switched off ones
+    # too: the mini app shows `deleted_at IS NULL`, and a config the bot had
+    # switched off but 3x-ui had deleted was in neither this pass nor gone.
     subs = d.q("SELECT s.*, u.tg_id FROM subscriptions s JOIN users u ON u.id=s.user_id "
-               "WHERE s.tenant_id=? AND s.is_active=1 AND s.deleted_at IS NULL",
+               "WHERE s.tenant_id=? AND s.deleted_at IS NULL",
                (t["id"],))
+    out["checked"] = len(subs)
     missing = [s for s in subs if s["client_email"] not in index]
+    out["missing"] = [s["client_email"] for s in missing][:30]
     # Half the shop gone at once can be a wrong panel or a bad read. It can
     # also be an owner with eight configs who deleted five test ones by hand,
     # and the first version of this guard could not tell the two apart: it
@@ -4535,6 +4624,8 @@ def _sub_lifecycle_shop(h, t, index, now):
                 d.log("sub_gone", s["user_id"], {"sub": s["id"], "email": s["client_email"]})
                 out["gone"] += 1
             continue
+        if not s.get("is_active"):
+            continue                      # switched off: only the "gone" rule applies
         exp = int(cl.get("expiry") or 0)
         if not s.get("expires_at") and s.get("pending_days") and exp > 0:
             # First connection happened: 3x-ui turned the duration into a date.
@@ -4571,7 +4662,44 @@ def _sub_lifecycle_shop(h, t, index, now):
             d.exec("UPDATE subscriptions SET notified_del=1 WHERE tenant_id=? AND id=?",
                    (t["id"], s["id"]))
             out["warned"] += 1
+    out["why"] = _SUB_WHY.get(t["id"]) or (
+        f"{len(missing)} of {len(subs)} not in the x-ui database; marked gone"
+        if missing else f"all {len(subs)} found in the x-ui database")
     return out
+
+
+def sub_sweep_report():
+    """
+    Run the sweep for every shop now and say, shop by shop, what it saw and
+    why it did what it did. Behind the bot-users page's «همگام‌سازی با
+    3x-ui» button and `nexora sweep`: when configs deleted in 3x-ui stayed
+    in the mini app on the owner's server, nothing in the panel could say
+    why, and guessing from here twice did not find it.
+    """
+    clients, _k, err = _read_xui_clients()
+    path = str(_xui_db_path())
+    if clients is None:
+        return {"ok": False, "xuiPath": path, "why": f"x-ui database unreadable: {err}"}
+    index = {c.get("email"): c for c in clients if c.get("email")}
+    h = _bot_handlers()
+    now = datetime.now()
+    shops = []
+    for t in h.DB.all_tenants(active_only=True):
+        if not t.get("bot_token"):
+            continue
+        try:
+            r = _sub_lifecycle_shop(h, t, index, now)
+        except Exception as e:
+            r = {"error": f"{type(e).__name__}: {str(e)[:160]}"}
+        shops.append({"id": t["id"], "name": t.get("name") or "", "reseller": bool(t.get("parent_id")), **r})
+    _SUB_SWEEP["at"] = time.time()
+    return {"ok": True, "xuiPath": path, "xuiClients": len(index), "shops": shops}
+
+
+@app.post("/api/admin/subs/sweep")
+def subs_sweep(x_admin_password: str = Header(...)):
+    check_auth(x_admin_password)
+    return sub_sweep_report()
 
 
 _SUB_SHOP_AT = {}
@@ -4672,6 +4800,12 @@ def _start_health_loop():
                     _loop_ok("sub-lifecycle")
             except Exception as e:
                 _loop_fail("sub-lifecycle", e)
+
+            try:
+                _tunnel_alert_tick()
+                _loop_ok("tunnel-alerts")
+            except Exception as e:
+                _loop_fail("tunnel-alerts", e)
 
             time.sleep(300)
 
@@ -8331,6 +8465,113 @@ class _AdminBotApi:
         ADMINBOT.update(CONFIG_PATH.parent, backupEvery=int(h))
 
 
+_ROLE_FA = {"iran": "ایران", "foreign": "خارج"}
+_TUN_OFF = "بخشِ تانل (Pro) روی این پنل فعال نیست."
+
+
+class _TunnelBotApi:
+    """
+    What the tunnel bot's buttons show: the tunnel section's own data (Pro:
+    `TUN`, `_link_diag_data`, `_linkcheck_tick`, loaded into this namespace).
+    Without Pro each answer says so instead of failing.
+    """
+
+    @staticmethod
+    def _tun():
+        return globals().get("TUN") if globals().get("TUNNELS_OK") else None
+
+    def tunnels(self):
+        T = self._tun()
+        if not T:
+            return _TUN_OFF
+        rows = T.list_tunnels()
+        if not rows:
+            return "📡 هنوز تانلی ساخته نشده."
+        lines = [f"📡 <b>تانل‌ها</b> · {len(rows)}", ""]
+        for t in rows[:25]:
+            on = t.get("status") == "running"
+            node = "" if t.get("nodeOnline", True) else " · سرورش آفلاین"
+            lines.append(f"{'🟢' if on else '🔴'} <b>{t.get('name') or '#' + str(t.get('id'))}</b>"
+                         f" · {t.get('engineName') or t.get('engine') or ''}"
+                         f" · {'روشن' if on else 'خاموش'}{node}")
+        return "\n".join(lines)
+
+    def servers(self):
+        T = self._tun()
+        if not T:
+            return _TUN_OFF
+        rows = T.list_nodes()
+        if not rows:
+            return "🖥 هنوز سروری اضافه نشده."
+        lines = [f"🖥 <b>سرورها</b> · {len(rows)}", ""]
+        for n in rows[:25]:
+            lines.append(f"{'🟢' if n.get('online') else '🔴'} <b>{n.get('name')}</b>"
+                         f" · {_ROLE_FA.get(n.get('role'), n.get('role') or '')}"
+                         f" · {n.get('running_count', 0)}/{n.get('tunnel_count', 0)} تانل"
+                         + ("" if n.get("online") else f" · آخرین تماس {str(n.get('last_seen') or '؟')[:16]}"))
+        return "\n".join(lines)
+
+    def diagnosis(self):
+        f = globals().get("_link_diag_data")
+        if not (self._tun() and f):
+            return _TUN_OFF
+        nodes = (f() or {}).get("nodes") or []
+        if not nodes:
+            return "🩺 هنوز نتیجه‌ای نیست؛ «بررسیِ دوباره» را بزنید."
+        icon = {"ok": "🟢", "warn": "🟡", "bad": "🔴"}
+        lines = ["🩺 <b>عیب‌یابی</b>", ""]
+        for n in nodes[:15]:
+            v = n.get("verdict") or {}
+            lines.append(f"{icon.get(v.get('level'), '⚪')} <b>{n.get('name')}</b>: "
+                         f"{v.get('title') or 'در انتظارِ نتیجه'}")
+            if v.get("level") in ("warn", "bad") and v.get("fix"):
+                lines.append(f"   چه کنم: {str(v['fix'])[:160]}")
+        return "\n".join(lines)
+
+    def recheck(self):
+        f = globals().get("_linkcheck_tick")
+        if not (self._tun() and f):
+            return _TUN_OFF
+        try:
+            f(force=True)
+        except Exception as e:
+            return f"❌ بررسی شروع نشد: {type(e).__name__}"
+        return ("🔄 بررسی شروع شد. نتیجه‌ی سرورها تا یکی دو دقیقه‌ی دیگر می‌رسد؛ "
+                "بعد «🩺 عیب‌یابی» را بزنید.")
+
+
+#: Last diagnosis level per server, for "a tunnel broke / recovered" alerts.
+_TUN_LEVELS = {}
+
+
+def _tunnel_alert_tick():
+    """
+    Compare each server's diagnosis with the last look and tell the owner what
+    changed (`adminbot.level_changes`). Until now a broken tunnel showed only on
+    the diagnosis page: nothing told the owner. Runs from the health loop.
+    """
+    f = globals().get("_link_diag_data")
+    if not (globals().get("TUNNELS_OK") and f):
+        return 0
+    nodes = (f() or {}).get("nodes") or []
+    now = {str(n.get("id")): (n.get("verdict") or {}).get("level") or "unknown" for n in nodes}
+    by_id = {str(n.get("id")): n for n in nodes}
+    changes = ADMINBOT.level_changes(_TUN_LEVELS, now)
+    _TUN_LEVELS.update(now)
+    for nid, _old, new in changes:
+        n = by_id[nid]
+        v = n.get("verdict") or {}
+        if new == "ok":
+            text = f"✅ <b>{n.get('name')}</b>\nارتباط دوباره سالم است."
+        else:
+            text = (f"{'🔴' if new == 'bad' else '🟡'} <b>{n.get('name')}</b>\n{v.get('title') or ''}"
+                    + (f"\n\n{str(v.get('reason'))[:300]}" if v.get("reason") else "")
+                    + (f"\n\nچه کنم: {str(v.get('fix'))[:200]}" if v.get("fix") else ""))
+        if not _adminbot_alert(text):
+            log.info("tunnel alert not sent (no tunnel or management bot): %s", n.get("name"))
+    return len(changes)
+
+
 _ADMINBOT_STOP = _threading.Event()
 
 
@@ -8340,6 +8581,9 @@ def _adminbot_boot():
         return
     _threading.Thread(target=ADMINBOT.loop, name="admin-bot", daemon=True,
                       args=(_tg_bot, _AdminBotApi(), CONFIG_PATH.parent,
+                            _ADMINBOT_STOP)).start()
+    _threading.Thread(target=ADMINBOT.loop_tunnel, name="tunnel-bot", daemon=True,
+                      args=(_tg_bot, _TunnelBotApi(), CONFIG_PATH.parent,
                             _ADMINBOT_STOP)).start()
 
 
@@ -8418,10 +8662,10 @@ def adminbot_test(x_admin_password: str = Header(...)):
     Start: a bot cannot message someone who never started it)."""
     check_auth(x_admin_password)
     s = ADMINBOT.settings(ADMINBOT.load(CONFIG_PATH.parent))
-    if not s["token"] or not s["admins"]:
+    if not (s["token"] or s["monitorToken"]) or not s["admins"]:
         raise HTTPException(400, detail="اول توکن و شناسه‌ی مدیر را ذخیره کنید")
     out = []
-    for tok, label in ((s["token"], "مدیریت"), (s["monitorToken"], "مانیتورینگ")):
+    for tok, label in ((s["token"], "مدیریت"), (s["monitorToken"], "تانل")):
         if not tok:
             continue
         bot = _tg_bot(tok)
@@ -8430,7 +8674,7 @@ def adminbot_test(x_admin_password: str = Header(...)):
                 if label == "مدیریت":
                     bot.send(cid, ADMINBOT.MENU_TEXT, ADMINBOT.menu_kb())
                 else:
-                    bot.send(cid, "📡 ربات مانیتورینگ وصل است. هشدارهای سرور و تانل این‌جا می‌آیند.")
+                    bot.send(cid, ADMINBOT.TUNNEL_MENU_TEXT, ADMINBOT.tunnel_menu_kb())
                 out.append({"bot": label, "to": cid, "ok": True})
             except Exception as e:
                 why = str(e)[:140]

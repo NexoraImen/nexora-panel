@@ -131,6 +131,7 @@ export const WORKSPACES = {
           { key: "nodes-monitor", label: "مانیتورینگ سرورهای دیگر", icon: Server, pro: "monitoring_multi" },
           { key: "tun-health", label: "سلامت سرورها", icon: ShieldCheck, pro: "monitoring_multi" },
           { key: "tun-events", label: "رویدادها", icon: Clock, pro: "monitoring_multi" },
+          { key: "tun-bot", label: "ربات تانل", icon: Bot, pro: "monitoring_multi" },
         ],
       },
     ],
@@ -224,7 +225,7 @@ export const WORKSPACES = {
         title: "سیستم",
         items: [
           { key: "bot-events", label: "رویدادها", icon: Clock },
-          { key: "bot-backup", label: "بک‌آپ ربات", icon: Database },
+          { key: "bot-backup", label: "ربات مدیریت و پشتیبان", icon: Database },
           { key: "system", label: "به‌روزرسانی", icon: Server },
         ],
       },

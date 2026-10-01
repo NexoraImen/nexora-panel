@@ -399,7 +399,9 @@ check("کاربر عادی نمی‌تواند تایید کند",
       D.get_order(o4["id"])["status"] != "approved",
       D.get_order(o4["id"])["status"])
 
-D.exec("UPDATE users SET is_blocked=1 WHERE tenant_id=? AND tg_id=?", (tid, 777))
+# a named ban (since 2.1.2); an unnamed flag is the old broadcast mark and
+# lets a returning customer back in (tests/test-user-block.py)
+D.exec("UPDATE users SET is_blocked=1, blocked_by='owner' WHERE tenant_id=? AND tg_id=?", (tid, 777))
 SENT.clear()
 H.dispatch(tenant, bot, up_msg(777, "/start"))
 check("کاربر مسدود پاسخی نمی‌گیرد", len(SENT) == 0)

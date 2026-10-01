@@ -3733,10 +3733,12 @@ def admin_input(ctx, user, chat_id, text, state, data):
                 msg = str(e).lower()
                 if "blocked" in msg or "deactivated" in msg or "chat not found" in msg:
                     blocked += 1
-                    # کاربری که ربات را بلاک کرده دیگر مشتری نیست
+                    # They blocked the bot: `left_at`, not a ban. Setting
+                    # `is_blocked` here made the bot ignore them for good,
+                    # even after they unblocked it and pressed /start.
                     try:
                         ctx.db.exec(
-                            "UPDATE users SET is_blocked=1 WHERE tenant_id=? AND tg_id=?",
+                            "UPDATE users SET left_at=CURRENT_TIMESTAMP WHERE tenant_id=? AND tg_id=?",
                             (ctx.tid, uid))
                     except Exception as e:
                         log.warning("marking user %s blocked failed: %s", uid, e)
@@ -3909,6 +3911,25 @@ def admin_input(ctx, user, chat_id, text, state, data):
                   back_kb("admin"))
 
 
+def _back_from_left(ctx, user):
+    """
+    Someone writing to the bot has unblocked it: clear `left_at`. And a ban
+    with no `blocked_by` is from before 2.1.2, when a failed broadcast set
+    the same flag as a ban; those were nearly all customers who had blocked
+    the bot, and the bot ignored them for good once they came back. They are
+    let back in, and it is on record. A ban set since then names who set it
+    and stays.
+    """
+    if user.get("left_at") or (user.get("is_blocked") and not user.get("blocked_by")):
+        ctx.db.exec("UPDATE users SET left_at=NULL, is_blocked=CASE WHEN blocked_by IS NULL "
+                    "THEN 0 ELSE is_blocked END WHERE tenant_id=? AND id=?",
+                    (ctx.tid, user["id"]))
+        if user.get("is_blocked") and not user.get("blocked_by"):
+            ctx.db.log("user_back", user["id"], {"why": "old flag from a broadcast"})
+        return ctx.db.get_user(user["tg_id"]) or user
+    return user
+
+
 def admin_toggle_block(ctx, user, chat_id, message_id, target_id):
     """مسدود/رفع مسدودی کاربر."""
     if not ctx.is_admin(user["tg_id"]):
@@ -3917,8 +3938,8 @@ def admin_toggle_block(ctx, user, chat_id, message_id, target_id):
     if not u:
         return
     new = 0 if u.get("is_blocked") else 1
-    ctx.db.exec("UPDATE users SET is_blocked=? WHERE tenant_id=? AND tg_id=?",
-                (new, ctx.tid, int(target_id)))
+    ctx.db.exec("UPDATE users SET is_blocked=?, blocked_by=? WHERE tenant_id=? AND tg_id=?",
+                (new, "admin" if new else None, ctx.tid, int(target_id)))
     return admin_user_detail(ctx, user, chat_id, message_id, target_id)
 
 
@@ -4097,7 +4118,7 @@ def _on_message(ctx, msg):
         # کدِ معرف نیست و نباید به‌جای آن ثبت شود.
         if ref and ref.startswith("own_"):
             return claim_owner(ctx, msg, ref[4:])
-        user = _get_or_create(ctx, frm, ref)
+        user = _back_from_left(ctx, _get_or_create(ctx, frm, ref))
         if user.get("is_blocked"):
             return None
         if ask_phone(ctx, user, msg["chat"]["id"]):
@@ -4107,6 +4128,7 @@ def _on_message(ctx, msg):
     user = ctx.db.get_user(frm["id"])
     if not user:
         user = _get_or_create(ctx, frm)
+    user = _back_from_left(ctx, user)
     if user.get("is_blocked"):
         return None
 
@@ -4174,7 +4196,7 @@ def _on_callback(ctx, cq):
     chat_id = (msg.get("chat") or {}).get("id")
     mid = msg.get("message_id")
 
-    user = ctx.db.get_user(frm["id"]) or _get_or_create(ctx, frm)
+    user = _back_from_left(ctx, ctx.db.get_user(frm["id"]) or _get_or_create(ctx, frm))
     if user.get("is_blocked"):
         return ctx.bot.answer_cb(cq["id"], "دسترسی شما مسدود است", alert=True)
 

@@ -271,3 +271,113 @@ def loop(make_bot, api, data_dir, stop):
             log.warning("admin bot: %s", str(e)[:200])
             stop.wait(min(backoff, 120))
             backoff = min(backoff * 2, 120)
+
+
+# ── The tunnel bot (docs/specs/2026-10-01-bots-and-tunnel-mesh.md) ──────────
+# Its own token (`monitorToken`), the same admin ids. In 2.1.0 it was only a
+# token that alerts could use; the owner asked twice for a bot of its own for
+# tunnels, with something to press.
+
+TUNNEL_MENU_TEXT = "📡 <b>ربات تانل نکسورا</b>\n\nتانل‌ها و سرورهای شما. چه چیزی را ببینم؟"
+
+
+def tunnel_menu_kb():
+    return _kb([
+        [("📡 تانل‌ها", "tn"), ("🩺 عیب‌یابی", "dg")],
+        [("🖥 سرورها", "sv"), ("🔄 بررسیِ دوباره", "rc")],
+    ])
+
+
+def tunnel_back_kb():
+    return _kb([[("‹ منو", "tm")]])
+
+
+def handle_tunnel(cfg, bot, api, update, state):
+    """One update for the tunnel bot: admins only, private chats only."""
+    s = settings(cfg)
+    msg = update.get("message")
+    cb = update.get("callback_query")
+    src = msg or (cb or {}).get("message") or {}
+    chat = src.get("chat") or {}
+    who = ((msg or cb or {}).get("from") or {}).get("id")
+    if chat.get("type") != "private" or who not in s["admins"]:
+        if who is not None:
+            log.info("tunnel bot: ignored update from %s", who)
+        return
+    cid = chat["id"]
+    if msg is not None:
+        bot.send(cid, TUNNEL_MENU_TEXT, tunnel_menu_kb())
+        return
+    data = cb.get("data") or ""
+    mid = src.get("message_id")
+    bot.answer_cb(cb.get("id"))
+
+    def show(text, kb=None):
+        try:
+            bot.edit(cid, mid, text, kb or tunnel_back_kb())
+        except Exception:
+            bot.send(cid, text, kb or tunnel_back_kb())
+
+    if data == "tm":
+        show(TUNNEL_MENU_TEXT, tunnel_menu_kb())
+    elif data == "tn":
+        show(api.tunnels())
+    elif data == "dg":
+        show(api.diagnosis())
+    elif data == "sv":
+        show(api.servers())
+    elif data == "rc":
+        show(api.recheck())
+
+
+def _poll(key, handler, make_bot, api, data_dir, stop, on_tick=None):
+    """Long-poll the bot whose token is settings()[key] while one is set."""
+    offset, bot, tok, backoff, state = None, None, None, 1, {}
+    last_tick = 0.0
+    while not stop.is_set():
+        cfg = load(data_dir)
+        token = settings(cfg)[key]
+        if not token:
+            bot, tok = None, None
+            stop.wait(30)
+            continue
+        if token != tok:
+            bot, tok, offset = make_bot(token), token, None
+        try:
+            if on_tick and time.time() - last_tick > 300:
+                last_tick = time.time()
+                on_tick(cfg, bot)
+            for up in bot.updates(offset=offset, timeout=25) or []:
+                offset = up["update_id"] + 1
+                try:
+                    handler(cfg, bot, api, up, state)
+                except Exception:
+                    log.exception("%s bot: update %s failed", key, up.get("update_id"))
+            backoff = 1
+        except Exception as e:
+            log.warning("%s bot: %s", key, str(e)[:200])
+            stop.wait(min(backoff, 120))
+            backoff = min(backoff * 2, 120)
+
+
+def loop_tunnel(make_bot, api, data_dir, stop):
+    _poll("monitorToken", handle_tunnel, make_bot, api, data_dir, stop)
+
+
+def level_changes(prev, now_levels):
+    """
+    Which servers' diagnosis changed enough to tell the owner: a change of
+    level, or the first look at a server that is not ok. Unknown is never
+    reported (no data yet is not a fault). Returns [(id, old, new)].
+    """
+    out = []
+    for nid, lvl in now_levels.items():
+        if lvl == "unknown":
+            continue
+        old = prev.get(nid)
+        if old == lvl:
+            continue
+        if old is None and lvl == "ok":
+            continue
+        out.append((nid, old, lvl))
+    return out

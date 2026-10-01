@@ -524,6 +524,18 @@ def _migrate(con):
         ("plans", "periods", "INTEGER DEFAULT 1"),
         ("orders", "license_id", "TEXT"),
         ("orders", "renew_license", "TEXT"),
+        # Who blocked whom (docs/specs/2026-10-01-admin-bot-backup-ui.md).
+        # `is_blocked` used to mean both "the admin banned this person" and
+        # "a broadcast found they had blocked the bot", and the bot ignores
+        # anyone with it: a customer who unblocked the bot and pressed /start
+        # never got an answer again. Now `is_blocked` is a ban only, with who
+        # banned in `blocked_by`; `left_at` is "they blocked the bot", and it
+        # clears the moment they write again.
+        ("users", "blocked_by", "TEXT"),
+        ("users", "left_at", "TEXT"),
+        # removed by the owner or reseller: off the list, configs deleted,
+        # orders kept for the accounts
+        ("users", "deleted_at", "TEXT"),
     ]
     for table, col, spec in adds:
         try:
