@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import { API_URL } from "../../lib/constants";
 import { errMsg, errText, esc0, faNum, okJson } from "../../lib/format";
-import { AreaChart, Avatar, CountUp, EmptyState, LoadError, PageSkeleton, SectionHead, Segmented, StatTile } from "../../ui/index";
+import { AreaChart, Avatar, CountUp, EmptyState, LoadError, PageSkeleton, SectionHead, Segmented, StatStrip } from "../../ui/index";
 import { isoToJalaliLabel } from "../../ui/jalali";
 
 export const REPORT_RANGES = [[7, "۷ روز"], [30, "۳۰ روز"], [90, "۹۰ روز"], [365, "یک سال"]];
@@ -136,23 +136,18 @@ export function BotReportSection({ password }) {
           </div>
         } />
 
-      <div className="fx-g4 grid grid-cols-4 gap-3 mb-4">
-        <StatTile label="فروش دوره" value={faNum(o.revenue || 0)} unit="تومان"
-          color="var(--ok)"
-          hint={o.approved ? `${faNum(o.approved)} سفارش · میانگین ${faNum(o.avg)}` : "سفارشی نبوده"} />
-        <StatTile label="کاربر جدید" value={faNum(u.newUsers || 0)} unit="نفر"
-          hint={`از ${faNum(u.users || 0)} کاربر کل`} />
-        <StatTile label="خریدار" value={faNum(d.buyerCount || 0)} unit="نفر"
-          color="var(--accent-2)"
-          hint={d.conversion !== null && d.conversion !== undefined
-            ? `نرخ تبدیل ${faNum(d.conversion)}٪ از کاربران جدید`
-            : "کاربر جدیدی نبوده"} />
-        <StatTile label="اشتراک فعال" value={faNum(s.active || 0)}
-          color={s.expiringSoon ? "var(--warn)" : "var(--text)"}
-          hint={s.expiringSoon
-            ? `${faNum(s.expiringSoon)} تا کمتر از ۳ روز اعتبار دارد`
-            : `از ${faNum(s.total || 0)} اشتراک کل`} />
-      </div>
+      {/* one strip, not four 148 px cards: the report is the chart and
+          the buyers below, these four numbers only frame it */}
+      <StatStrip items={[
+        { label: "فروش دوره", value: `${faNum(o.revenue || 0)} تومان`, color: "var(--ok)",
+          hint: o.approved ? `${faNum(o.approved)} سفارش · میانگین ${faNum(o.avg)}` : "سفارشی نبوده" },
+        { label: "کاربر جدید", value: faNum(u.newUsers || 0), hint: `از ${faNum(u.users || 0)}` },
+        { label: "خریدار", value: faNum(d.buyerCount || 0), color: "var(--accent-2)",
+          hint: d.conversion !== null && d.conversion !== undefined ? `تبدیل ${faNum(d.conversion)}٪` : "" },
+        { label: "اشتراک فعال", value: faNum(s.active || 0),
+          color: s.expiringSoon ? "var(--warn)" : "var(--text)",
+          hint: s.expiringSoon ? `${faNum(s.expiringSoon)} تا زیرِ ۳ روز` : `از ${faNum(s.total || 0)}` },
+      ]} />
 
       {/* one line under the tiles, not a full-width card for one sentence */}
       {(o.pending > 0 || o.rejected > 0) && (

@@ -1050,13 +1050,15 @@ export function SettingsSection({ config, setConfig, password, onPasswordChanged
 
       <div className="fx-card p-5 mb-4">
         <div className="text-[14px] font-semibold text-white mb-1 flex items-center gap-2"><Eye size={15} style={{ color: "var(--accent-2)" }} /> نمایش بخش‌ها</div>
-        <p className="text-[13px] mb-4" style={{ color: "var(--muted)" }}>هر بخشی را که نمی‌خواهید در صفحه‌ی مشتری دیده شود، خاموش کنید.</p>
-        <div className="flex flex-col">
-          {vis.map((v, i) => (
-            <div key={v.key} className="flex items-center justify-between gap-3 py-3" style={{ borderBottom: i < vis.length - 1 ? "1px solid var(--border)" : "none" }}>
+        <p className="text-[12.5px] mb-2" style={{ color: "var(--muted)" }}>هر بخشی را که نمی‌خواهید در صفحه‌ی مشتری دیده شود، خاموش کنید.</p>
+        {/* Two columns of short rows; each switch was an 82 px row with its
+            description on a second line. The description is the tooltip. */}
+        <div className="fx-togs">
+          {vis.map((v) => (
+            <div key={v.key} className="fx-tog-row" title={v.desc}>
               <div className="min-w-0">
-                <div className="text-[14px] text-white">{v.label}</div>
-                <div className="text-[12px] mt-0.5" style={{ color: "var(--muted)" }}>{v.desc}</div>
+                <div className="text-[13px] text-white truncate">{v.label}</div>
+                <div className="text-[11.5px] truncate" style={{ color: "var(--muted)" }}>{v.desc}</div>
               </div>
               <Toggle checked={a[v.key] !== false} onChange={() => update({ [v.key]: !(a[v.key] !== false) })} label={v.label} />
             </div>

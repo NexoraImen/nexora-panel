@@ -605,35 +605,35 @@ export function BotSection({ password, dirty }) {
           <Toggle checked={!!s.force_channel_on}
             onChange={() => upS({ force_channel_on: !s.force_channel_on })} label="فعال" />
         </div>
-        <p className="text-[13px] mb-4 leading-relaxed" style={{ color: "var(--muted)" }}>
+        <p className="text-[12.5px] leading-relaxed" style={{ color: "var(--muted)" }}>
           اگر فعال باشد، کاربر تا در کانال عضو نشود نمی‌تواند پلن‌ها را ببیند یا تست رایگان بگیرد.
         </p>
 
-        <div style={{ opacity: s.force_channel_on ? 1 : 0.45, pointerEvents: s.force_channel_on ? "auto" : "none" }}>
+        {/* Off: the fields fold away instead of sitting greyed out (the
+            owner's screenshot: a greyed field and a three-line warning
+            under a switch that was off). */}
+        {s.force_channel_on && <div className="mt-3">
           <Field label="یوزرنیم یا لینک کانال" hint="مثلاً @your_channel یا https://t.me/your_channel">
             <input className="fx-input" dir="ltr" value={s.force_channel || ""}
               onChange={(e) => upS({ force_channel: e.target.value })} placeholder="@your_channel" />
           </Field>
 
           <InfoBox tone="warn">
-            <b>مهم:</b> ربات باید در کانال <b>ادمین</b> باشد، وگرنه نمی‌تواند عضویت را بررسی کند.
-            اگر ربات ادمین نباشد، سیستم سخت‌گیری نمی‌کند و اجازه‌ی خرید می‌دهد —
-            چون قفل‌شدن کل فروش بدتر از رد نشدن یک نفر است.
+            ربات باید در کانال <b>ادمین</b> باشد؛ وگرنه عضویت بررسی نمی‌شود و همه می‌توانند بخرند.
           </InfoBox>
-        </div>
+        </div>}
       </div>
 
       </div>
 
       {/* راه‌اندازی */}
-      <InfoBox>
-        بعد از ذخیره، روی سرور این دستور را بزنید تا ربات روشن شود:
-        <br />
-        <code dir="ltr" className="inline-block mt-2 px-3 py-1.5 rounded-lg text-[13px]"
+      <p className="text-[12.5px] px-1" style={{ color: "var(--muted)" }}>
+        بعد از ذخیره، روی سرور بزنید:{" "}
+        <code dir="ltr" className="px-2 py-0.5 rounded-md text-[12.5px]"
           style={{ background: "var(--surface-3)", color: "var(--accent-2)", fontFamily: "var(--mono)" }}>
           nexora bot enable
         </code>
-      </InfoBox>
+      </p>
     </div>
   );
 }

@@ -159,32 +159,29 @@ export function BotEventsSection({ password, src }) {
                   const t = tone(e.level);
                   const Icon = t.Icon;
                   return (
+                    /* One line per event on a wide screen: what, who, when.
+                       The time sat on a second line under the text and the
+                       rest of the row was empty. */
                     <div key={e.id}
-                      className="flex items-start gap-3 px-3 py-2.5"
+                      className="ev-row"
                       style={{
                         background: t.wash,
                         borderBottom: i < rows.length - 1
                           ? "1px solid var(--hair-1)" : "none",
                       }}>
                       <span
-                        className="shrink-0 mt-0.5 flex items-center justify-center"
+                        className="shrink-0 flex items-center justify-center"
                         style={{
-                          width: 26, height: 26, borderRadius: 8,
+                          width: 24, height: 24, borderRadius: 7,
                           background: t.bg, color: t.fg,
                           border: `1px solid ${t.line}`,
                         }}>
                         <Icon size={14} />
                       </span>
 
-                      <div className="min-w-0 flex-1">
-                        <div className="text-[13px] leading-6"
-                          style={{ color: "var(--dim)" }}>
-                          {e.text}
-                        </div>
-                        <div
-                          className="flex items-center gap-3 flex-wrap text-[11px] mt-0.5"
-                          style={{ color: "var(--muted)" }}>
-                          <span>{e.at ? isoToJalaliStamp(e.at) : "—"}</span>
+                      <div className="ev-text">{e.text}</div>
+                        <div className="ev-meta">
+                          <span className="ev-at">{e.at ? isoToJalaliStamp(e.at) : "—"}</span>
                           {e.name || e.tgId ? (
                             <span className="flex items-center gap-1">
                               <User size={11} />
@@ -206,7 +203,6 @@ export function BotEventsSection({ password, src }) {
                             </span>
                           ) : null}
                         </div>
-                      </div>
                     </div>
                   );
                 })}

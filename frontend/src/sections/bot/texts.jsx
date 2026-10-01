@@ -452,15 +452,15 @@ export function BotTextsSection({ password, src, behaviour = BOT_BEHAVIOUR,
           const wide = f.type === "miniapp" || f.k === "sub_base_url";
           return (
           <div key={f.k}
-            className={wide ? "py-3" : "flex items-start justify-between gap-4 py-3"}
+            className={wide ? "py-2" : "flex items-center justify-between gap-4 py-2"}
             style={{ borderBottom: "1px solid var(--border)" }}>
             <div className="min-w-0 flex-1">
-              <div className="text-[13.5px] font-semibold text-white">{f.label}</div>
-              <div className="text-[12px] mt-0.5 leading-relaxed"
+              <div className="text-[13px] font-semibold text-white">{f.label}</div>
+              <div className="text-[11.5px] leading-relaxed"
                 style={{ color: "var(--muted)" }}>{f.hint}</div>
             </div>
             <div className={wide ? "mt-2.5 w-full max-w-[520px]" : "shrink-0"}
-              style={wide ? undefined : { width: f.type === "bool" ? "auto" : 200 }}>
+              style={wide ? undefined : { width: f.type === "bool" ? "auto" : 170 }}>
               {f.type === "bool" && (
                 <Toggle label={f.label}
                   checked={s[f.k] === undefined ? f.def : !!s[f.k]}

@@ -140,11 +140,11 @@ export function MoneyInput({ value, onChange, decimal = false,
 
 export function Field({ label, hint, children }) {
   return (
-    <div className="mb-3">
-      <label className="text-[13px] mb-1.5 block" style={{ color: "var(--muted)" }}>{label}</label>
+    <div className="fx-field">
+      <label className="block" style={{ color: "var(--muted)" }}>{label}</label>
       {children}
       {/* #475569 روی زمینه‌ی تیره کنتراستِ ۲٫۳ داشت — زیرِ حدِ خوانایی */}
-      {hint && <p className="text-[12px] mt-1.5 leading-relaxed" style={{ color: "var(--muted)" }}>{hint}</p>}
+      {hint && <p className="leading-relaxed" style={{ color: "var(--muted)" }}>{hint}</p>}
     </div>
   );
 }
@@ -157,15 +157,17 @@ export function Field({ label, hint, children }) {
 export function Toggle({ checked, onChange, label }) {
   return (
     <button onClick={() => onChange(!checked)} role="switch" aria-checked={checked} aria-label={label}
-      className="w-12 h-[26px] rounded-full transition-all relative shrink-0"
+      className="w-10 h-[22px] rounded-full transition-all relative shrink-0"
       style={{ background: checked ? "var(--accent)" : "var(--hair-3)" }}>
-      <span className="absolute top-[3px] w-5 h-5 rounded-full bg-white transition-all duration-200"
+      <span className="absolute top-[3px] w-4 h-4 rounded-full bg-white transition-all duration-200"
         style={{ [checked ? "right" : "left"]: "3px" }} />
     </button>
   );
 }
 
-export function NumberStepper({ value, onChange, min = 0, max = 100, unit }) {
+/* `slider` is opt-in: under every stepper it repeated the same control,
+   and three steppers with three sliders made a 458 px card of three numbers. */
+export function NumberStepper({ value, onChange, min = 0, max = 100, unit, slider = false }) {
   const clamp = (v) => Math.min(max, Math.max(min, v));
   const pct = ((value - min) / (max - min)) * 100;
   return (
@@ -176,8 +178,8 @@ export function NumberStepper({ value, onChange, min = 0, max = 100, unit }) {
         {unit && <span className="fx-stepper-unit">{unit}</span>}
         <button className="fx-stepper-btn" onClick={() => onChange(clamp(value + 1))} disabled={value >= max} aria-label="زیاد کردن"><Plus size={16} /></button>
       </div>
-      <input className="fx-range" type="range" min={min} max={max} value={value} onChange={(e) => onChange(Number(e.target.value))}
-        style={{ background: `linear-gradient(to left, var(--accent) 0%, var(--accent) ${pct}%, var(--hair-2) ${pct}%)` }} />
+      {slider && <input className="fx-range" type="range" min={min} max={max} value={value} onChange={(e) => onChange(Number(e.target.value))}
+        style={{ background: `linear-gradient(to left, var(--accent) 0%, var(--accent) ${pct}%, var(--hair-2) ${pct}%)` }} />}
     </div>
   );
 }

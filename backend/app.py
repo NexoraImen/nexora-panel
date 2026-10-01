@@ -4408,8 +4408,9 @@ _HEALTH_HOOKS = []
 
 
 # ── Config lifecycle (docs/specs/2026-09-30-vpn-fixes.md, task 9) ─────────
-#: The sweep runs from the health loop (every 5 minutes) but works hourly.
-SUB_SWEEP_EVERY = 3600
+#: The sweep runs from the health loop (every 5 minutes) and works every 15
+#: minutes: one read of the x-ui database, then only rows that changed.
+SUB_SWEEP_EVERY = 900
 _SUB_SWEEP = {"at": 0.0}
 
 
@@ -4571,6 +4572,32 @@ def _sub_lifecycle_shop(h, t, index, now):
                    (t["id"], s["id"]))
             out["warned"] += 1
     return out
+
+
+_SUB_SHOP_AT = {}
+
+
+def sub_sweep_shop_now(t, clients=None, min_gap=60):
+    """
+    The sweep for one shop, now (at most once a minute per shop). The mini
+    app calls it before listing a buyer's configs: with only the hourly pass,
+    a config the owner had just deleted in 3x-ui was still on the buyer's
+    home screen for up to an hour, as an "active, 0 MB" card. Same function
+    as the hourly pass, so the same guard and the same rule.
+    """
+    if time.time() - _SUB_SHOP_AT.get(t["id"], 0) < min_gap:
+        return None
+    _SUB_SHOP_AT[t["id"]] = time.time()
+    if clients is None:
+        clients, _k, _err = _read_xui_clients()
+    if not clients:
+        return None
+    try:
+        index = {c.get("email"): c for c in clients if c.get("email")}
+        return _sub_lifecycle_shop(_bot_handlers(), t, index, datetime.now())
+    except Exception as e:
+        log.warning("sub sweep (shop %s, on demand) failed: %s", t.get("id"), e)
+        return None
 
 
 def _sub_lifecycle_tick(now=None, force=False):

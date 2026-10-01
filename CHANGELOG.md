@@ -3,6 +3,40 @@
 Each entry says what was broken and why, not a list of commits.
 History before 2.0 lives with the 1.x line.
 
+## [2.1.1] - 2026-10-01
+
+### The panel is calmer on every page, not only on six
+
+2.1.0 tidied six pages; the rest still had the same shared parts that made
+them long: 18 px card padding, 44 px number steppers with a slider under each
+that repeated the stepper, 142 px number tiles, three-line info boxes, tall
+switch rows. Those parts are tighter now, so every page shrinks at once. And
+where a page wasted the width, it became a table:
+
+- «واسطه‌ها و نرخ» is one table (name, configs, usage, amount due, switch)
+  instead of a full-width card per reseller; the reseller editor picks its
+  pricing model and payment period from small selectors, not rows of big
+  buttons.
+- «رویدادهای ربات» is one line per event: what, who, when.
+- The sales report's four big cards are one strip.
+- Settings that are switched off fold away (trial follow-up, forced channel
+  membership) instead of sitting greyed out under the switch.
+- The subscription page's section switches are two columns of short rows.
+- Inbound advice shows three lines of reasons, the settings table on demand.
+
+Measured on the same screen: trial follow-up 1,322 → 961 px, settings 1,409 →
+1,130, bot connection 1,407 → 1,260, inbound advice 1,071 → 916, an event row
+79 → 39 px, a reseller row 110 → 56.
+
+### The mini app's home screen
+
+Home showed the three newest subscriptions as full cards, and a config just
+deleted in 3x-ui stayed there as "active, 0 MB" until the hourly cleanup. Home
+now has one row, «اشتراک‌های من», that opens the subscriptions tab; opening
+the mini app runs that shop's cleanup on the spot; and a config with no
+volume cap says «نامحدود», not «۰ مگابایت». The cleanup itself runs every 15
+minutes now instead of hourly.
+
 ## [2.1.0] - 2026-10-01
 
 ### Configs deleted in 3x-ui stayed in the bot
