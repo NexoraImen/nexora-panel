@@ -1882,6 +1882,18 @@ check("the build carries its version and the panel compares it with the server's
       and "__NX_BUILD__" in ALL.get("ui/pro.jsx", "")
       and '"version": _panel_version()' in _APPB)
 
+head("A page file the update deleted: reload, not «این بخش باز نشد»")
+# After every `nexora update` a tab opened before it asked for chunks the new
+# build had removed, and most bot pages showed «Failed to fetch dynamically
+# imported module» (the owner's screenshots, 2026-10-01).
+_main = io.open(os.path.join(SRC, "main.jsx"), encoding="utf-8").read()
+_stale = io.open(os.path.join(SRC, "lib", "stale.js"), encoding="utf-8").read()
+check("the app listens for vite:preloadError", "watchStaleChunks()" in _main
+      and "vite:preloadError" in _stale)
+check("the error boundary reloads on a stale chunk", "isStaleChunk(err)" in UI
+      and "reloadForNewBuild()" in UI)
+check("… once a minute at most (no reload loop)", "60000" in _stale and "sessionStorage" in _stale)
+
 head("Toggle gives its callers a value, not the click event")
 # Four callers wrote `(v) => up({ enabled: v })` while Toggle passed the click
 # event: the trial follow-up stored a DOM node and its save died with

@@ -10,6 +10,9 @@ import "./index.css";
 import { applyTheme, markScheme } from "./lib/mini-themes.js";
 import { readShop, writeShop } from "./lib/shopcache.js";
 import { API_URL } from "./lib/constants";
+import { watchStaleChunks } from "./lib/stale.js";
+
+watchStaleChunks();
 
 // آدرس تعیین می‌کند کدام اپ بالا بیاید.
 //

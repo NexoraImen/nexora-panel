@@ -102,6 +102,10 @@ KINDS = {
         "label": "کانفیگ در پنل حذف شده بود؛ از ربات هم برداشته شد",
         "level": "info", "alert": False,
     },
+    "sub_back": {
+        "label": "کانفیگی که «در پنل نیست» علامت خورده بود دوباره در 3x-ui پیدا شد و برگشت",
+        "level": "info", "alert": False,
+    },
     "sub_deleted": {
         "label": "کانفیگِ تمدیدنشده پاک شد",
         "level": "info", "alert": False,

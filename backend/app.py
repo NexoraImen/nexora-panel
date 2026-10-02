@@ -4564,7 +4564,9 @@ def _sub_confirm_missing(h, t, missing):
         found = {}
         for s in missing:
             c = x.find_client(s["inbound_id"], email=s["client_email"])
-            if isinstance(c, dict) and c:
+            # Some 3x-ui versions answer an unknown email with an empty
+            # "success" object; only an answer that names this config counts.
+            if isinstance(c, dict) and str(c.get("email") or "").lower() == s["client_email"].lower():
                 found[s["client_email"]] = _sub_api_client(c)
         if not x.inbounds():
             _SUB_WHY[t["id"]] = "the shop's 3x-ui API stopped answering mid-check"
@@ -4595,6 +4597,18 @@ def _sub_lifecycle_shop(h, t, index, now):
                "WHERE s.tenant_id=? AND s.deleted_at IS NULL",
                (t["id"],))
     out["checked"] = len(subs)
+    back = d.q("SELECT id, user_id, client_email FROM subscriptions WHERE tenant_id=? "
+               "AND deleted_why='missing_in_panel'", (t["id"],))
+    for b in back:
+        if b["client_email"] in index:
+            d.exec("UPDATE subscriptions SET is_active=1, deleted_at=NULL, deleted_why=NULL "
+                   "WHERE tenant_id=? AND id=?", (t["id"], b["id"]))
+            d.log("sub_back", b["user_id"], {"sub": b["id"], "email": b["client_email"]})
+            out["back"] = out.get("back", 0) + 1
+    if out.get("back"):
+        subs = d.q("SELECT s.*, u.tg_id FROM subscriptions s JOIN users u ON u.id=s.user_id "
+                   "WHERE s.tenant_id=? AND s.deleted_at IS NULL", (t["id"],))
+        out["checked"] = len(subs)
     missing = [s for s in subs if s["client_email"] not in index]
     out["missing"] = [s["client_email"] for s in missing][:30]
     # Half the shop gone at once can be a wrong panel or a bad read. It can
@@ -4603,7 +4617,15 @@ def _sub_lifecycle_shop(h, t, index, now):
     # skipped that shop every hour and the deleted configs stayed in the bot.
     # So the shop's own 3x-ui (the one the bot creates on) is asked about each
     # one; only when it cannot be asked is nothing marked.
-    guard = len(missing) >= 5 and len(missing) * 2 >= len(subs)
+    # A wrong panel or a bad read finds none of this shop's configs. Until
+    # 2.1.3 the guard was "half or more missing", and an owner who deleted his
+    # test configs by hand tripped it every hour; when his 3x-ui API did not
+    # answer either, the deleted configs stayed in the bot and the mini app for
+    # good (the owner's screenshots, 2026-10-01). If the read finds even one
+    # of the shop's configs it read the right panel, and the rest are gone. A
+    # "gone" mark is undone below the moment a config is seen again.
+    found_n = len(subs) - len(missing)
+    guard = len(missing) >= 5 and found_n == 0
     if guard:
         found = _sub_confirm_missing(h, t, missing)
         if found is None:
@@ -5566,6 +5588,11 @@ def _subscriber(tid, tg_id):
     رباتِ مالک بخرد هم از رباتِ نماینده — دو ردیف با یک `tg_id` — و
     `fetchone()` هر کدام را که پیش می‌آمد برمی‌داشت.
     """
+    # this shop's sweep first, as the mini app does: a config deleted in
+    # 3x-ui leaves this list now, not at the next pass
+    _t = _tenant_row(tid)
+    if _t:
+        sub_sweep_shop_now(_t)
     con = _tenant_conn(tid)
     if not con:
         raise HTTPException(status_code=404, detail="دیتابیس ربات موجود نیست")
@@ -5576,10 +5603,13 @@ def _subscriber(tid, tg_id):
             raise HTTPException(status_code=404, detail="کاربر پیدا نشد")
         user = dict(u)
 
+        # deleted configs (by the sweep, by hand in 3x-ui, with the user)
+        # are gone here too, as in the bot and the mini app
         subs = [dict(r) for r in con.execute(
             "SELECT s.*, p.name AS plan_name FROM subscriptions s "
             "LEFT JOIN plans p ON p.id = s.plan_id "
-            "WHERE s.user_id = ? ORDER BY s.created_at DESC", (user["id"],))]
+            "WHERE s.user_id = ? AND s.deleted_at IS NULL "
+            "ORDER BY s.created_at DESC", (user["id"],))]
 
         orders = [dict(r) for r in con.execute(
             "SELECT o.*, p.name AS plan_name FROM orders o "
@@ -5599,9 +5629,23 @@ def _subscriber(tid, tg_id):
     # قاعده‌ی `_panel_row` که ساخت و تمدید هم از آن می‌گذرند.
     tenant = _panel_row(dict(_trow)) if _trow else None
 
-    # ترافیک زنده برای هر اشتراک فعال
+    # Live usage from the x-ui database, the same read the sweep, the mini
+    # app and accounting use. It used to ask the API config by config; when
+    # that API did not answer, every config said "no live data" and nothing
+    # could tell a deleted config from a live one.
     live = {}
-    if tenant and tenant["panel_url"]:
+    clients, _k, _e = _read_xui_clients()
+    if clients:
+        idx = {c.get("email"): c for c in clients if c.get("email")}
+        for s in subs:
+            c = idx.get(s.get("client_email"))
+            if c:
+                live[s["client_email"]] = {
+                    "up": 0, "down": int(c.get("used") or 0),
+                    "total": int(c.get("totalGB") or 0),
+                    "expiryTime": int(c.get("expiry") or 0),
+                    "enable": bool(c.get("enable", True)), "inboundId": None}
+    if not live and tenant and tenant["panel_url"]:
         try:
             import sys as _sys
             bd = str(_bot_dir())
@@ -6762,6 +6806,18 @@ def _read_xui_clients():
 TEHRAN_OFFSET = 3.5 * 3600      # UTC+3:30
 
 
+def _tehran_today():
+    """
+    Today's date in Tehran, the same clock `_to_jalali` puts config dates on.
+    The billing pages compared Tehran-dated configs with the server's own
+    `date.today()`; on a UTC server, between 20:30 and midnight UTC a config
+    made that evening was already "tomorrow" and fell out of the current
+    period (found by CI running at 21:19 UTC, 2026-10-01).
+    """
+    from datetime import datetime as _dt, timezone as _tz, timedelta as _td
+    return (_dt.now(_tz.utc) + _td(seconds=TEHRAN_OFFSET)).date()
+
+
 def _epoch_ms(v):
     """
     هر شکلی از تاریخ را به میلی‌ثانیه‌ی epoch تبدیل می‌کند، یا None.
@@ -7092,7 +7148,7 @@ def _period_bounds(conf, ref=None):
     """
     from datetime import date, timedelta
 
-    today = ref or date.today()
+    today = ref or _tehran_today()
     length = max(1, int(conf.get("period_days") or 30))
 
     start_str = (conf.get("period_start") or "").strip()

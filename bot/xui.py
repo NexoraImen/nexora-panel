@@ -656,10 +656,13 @@ class XUI:
                     continue
                 try:
                     found = self._req("GET", p)
-                    if isinstance(found, dict) and found:
-                        return _unwrap(found)
-                    if isinstance(found, list) and found:
-                        return _unwrap(found[0])
+                    if isinstance(found, list):
+                        found = found[0] if found else None
+                    flat = _unwrap(found) if isinstance(found, dict) and found else None
+                    # Some 3x-ui versions answer an unknown email with an
+                    # empty "success" object; that is not this client.
+                    if isinstance(flat, dict) and str(flat.get("email") or "").lower() == email.lower():
+                        return flat
                 except (XUIError, TypeError, ValueError):
                     continue
 

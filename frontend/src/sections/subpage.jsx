@@ -1104,10 +1104,17 @@ export function SettingsSection({ config, setConfig, password, onPasswordChanged
         <Field label="متن پاورقی سفارشی" hint="اگر خالی بگذارید، چیزی نمایش داده نمی‌شود.">
           <input className="fx-input" value={a.customFooterText || ""} onChange={(e) => update({ customFooterText: e.target.value })} placeholder="پشتیبانی ۲۴ ساعته" />
         </Field>
-        <Field label="CSS سفارشی" hint="برای کاربران حرفه‌ای — مستقیم به صفحه‌ی اشتراک تزریق می‌شود.">
-          <textarea className="fx-input" dir="ltr" rows={4} value={a.customCss || ""} onChange={(e) => update({ customCss: e.target.value })}
-            placeholder=".my-class { color: red; }" style={{ fontFamily: "var(--mono)", fontSize: 11.5 }} />
-        </Field>
+        {/* Custom CSS is for the rare expert: folded, open by itself when set */}
+        <details open={!!a.customCss}>
+          <summary className="text-[12.5px] cursor-pointer" style={{ color: "var(--dim)" }}>
+            CSS سفارشی (برای کاربرانِ حرفه‌ای){a.customCss ? " · فعال" : ""}
+          </summary>
+          <div className="mt-2">
+            <textarea className="fx-input" dir="ltr" rows={4} value={a.customCss || ""} onChange={(e) => update({ customCss: e.target.value })}
+              placeholder=".my-class { color: red; }" style={{ fontFamily: "var(--mono)", fontSize: 11.5 }} />
+            <p className="text-[11.5px] mt-1" style={{ color: "var(--muted)" }}>مستقیم به صفحه‌ی اشتراک تزریق می‌شود.</p>
+          </div>
+        </details>
       </div>
 
       </div>
@@ -1795,21 +1802,32 @@ export function ChangePasswordCard({ password, onPasswordChanged }) {
       <div className="text-[14px] font-semibold text-white mb-1 flex items-center gap-2">
         <Key size={15} style={{ color: "var(--accent-2)" }} /> تغییر رمز عبور
       </div>
-      <p className="text-[13px] mb-4" style={{ color: "var(--muted)" }}>
-        رمز جدید بلافاصله فعال می‌شود و در فایل امن روی سرور ذخیره می‌گردد.
+      <p className="text-[12.5px] mb-3" style={{ color: "var(--muted)" }}>
+        رمز جدید بلافاصله فعال می‌شود. حداقل ۸ کاراکتر؛ ترکیب حروف، عدد و علامت امن‌تر است.
       </p>
 
+      {/* three fields in one row: stacked with their gaps they made a
+          456 px card (the owner's screenshot) */}
+      <div className="fx-g3 grid grid-cols-3 gap-3">
       <Field label="رمز عبور فعلی">
         <input className="fx-input" type={show ? "text" : "password"} value={current}
           onChange={(e) => setCurrent(e.target.value)} dir="ltr"
           style={{ fontFamily: "var(--mono)" }} />
       </Field>
 
-      <Field label="رمز عبور جدید" hint="حداقل ۸ کاراکتر — ترکیب حروف بزرگ/کوچک، عدد و علامت امن‌تر است">
+      <Field label="رمز عبور جدید">
         <input className="fx-input" type={show ? "text" : "password"} value={next}
           onChange={(e) => setNext(e.target.value)} dir="ltr"
           style={{ fontFamily: "var(--mono)" }} />
       </Field>
+
+      <Field label="تکرار رمز جدید">
+        <input className="fx-input" type={show ? "text" : "password"} value={confirm}
+          onChange={(e) => setConfirm(e.target.value)} dir="ltr"
+          style={{ fontFamily: "var(--mono)",
+                   borderColor: confirm && next !== confirm ? "var(--danger)" : undefined }} />
+      </Field>
+      </div>
 
       {next && (
         <div className="mb-3 -mt-1">
@@ -1823,14 +1841,7 @@ export function ChangePasswordCard({ password, onPasswordChanged }) {
         </div>
       )}
 
-      <Field label="تکرار رمز جدید">
-        <input className="fx-input" type={show ? "text" : "password"} value={confirm}
-          onChange={(e) => setConfirm(e.target.value)} dir="ltr"
-          style={{ fontFamily: "var(--mono)",
-                   borderColor: confirm && next !== confirm ? "var(--danger)" : undefined }} />
-      </Field>
-
-      <label className="flex items-center gap-2 text-[13px] mb-4 cursor-pointer" style={{ color: "var(--dim)" }}>
+      <label className="flex items-center gap-2 text-[13px] mb-3 cursor-pointer" style={{ color: "var(--dim)" }}>
         <input type="checkbox" checked={show} onChange={(e) => setShow(e.target.checked)}
           style={{ accentColor: "var(--accent)" }} />
         نمایش رمزها

@@ -141,6 +141,9 @@ class Handler(BaseHTTPRequestHandler):
         m = re.fullmatch(r"/panel/api/clients/get/(.+)", p)
         if m:
             c = CLIENTS.get(m.group(1))
+            if not c and STATE.get("zero_obj"):
+                # what some 3x-ui versions answer for an unknown email
+                return self._ok({"client": {"id": "", "email": "", "totalGB": 0}})
             if not c:
                 return self._fail("client not found")
             # پاسخ نسخه‌ی ۳ تودرتوست
@@ -390,6 +393,10 @@ section("خواندن کلاینت")
 check("با ایمیل", (c.find_client(41, email=EMAIL) or {}).get("email") == EMAIL)
 check("با uuid", (c.find_client(41, client_uuid=res["uuid"]) or {}).get("email") == EMAIL)
 check("مصرف خوانده شد", (c.client_traffic(EMAIL) or {}).get("up") == 1048576)
+STATE["zero_obj"] = True
+check("an empty 'success' answer for an unknown email is not a client",
+      c.find_client(41, email="nobody_at_all") is None)
+STATE["zero_obj"] = False
 
 # ═══════════════ تمدید ═══════════════
 section("تمدید و تغییر وضعیت")

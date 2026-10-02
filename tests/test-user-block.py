@@ -203,7 +203,7 @@ if _pt is None or not getattr(AP, "PRO_LOADED", False):
 else:
     AP.app.dependency_overrides[_pt] = lambda: H.DB.get_tenant(SHOP)
     _allowed = AP.LIC.allowed
-    AP.LIC.allowed = lambda f: True             # no license in a test; the gate is tested elsewhere
+    AP.LIC.allowed = lambda *a, **k: True       # no license in a test; the gate is tested elsewhere
     st, j = call("/api/portal/users/8001", "DELETE", portal=tok)
     check("a reseller's config goes through the billing core", st == 200 and PORTAL_DELETED == ["shop_x"], (st, j))
     st, j = call("/api/portal/users/7009/block", "POST", {"block": True}, portal=tok)

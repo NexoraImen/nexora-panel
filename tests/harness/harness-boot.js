@@ -8391,6 +8391,17 @@
     ],
     "engines": [
       {
+        "key": "iptables", "name": "iptables (مستقیم)",
+        "desc": "سریع‌ترین راه: فورواردِ هسته‌ی لینوکس، بی هیچ برنامه‌ی اضافه — وقتی مسیرِ ایران به خارج باز است",
+        "repo": "", "binaries": [], "config": "json", "transports": ["tcp+udp", "tcp"],
+        "default_transport": "tcp+udp", "recommended": true, "one_sided": true
+      },
+      {
+        "key": "realm", "name": "Realm", "desc": "رله‌ی سبکِ Rust برای TCP و UDP، فقط روی سرور ایران",
+        "repo": "zhboner/realm", "binaries": ["realm"], "config": "toml", "transports": ["tcp+udp", "tcp"],
+        "default_transport": "tcp+udp", "recommended": false, "one_sided": true
+      },
+      {
         "key": "backhaul",
         "name": "Backhaul",
         "desc": "سریع و پایدار برای شرایط ایران — پیشنهاد اول",
@@ -10610,6 +10621,11 @@
    "user_deleted": {
     "label": "کاربر حذف شد و کانفیگ‌هایش پاک شد",
     "level": "warn",
+    "alert": false
+   },
+   "sub_back": {
+    "label": "کانفیگی که «در پنل نیست» علامت خورده بود دوباره در 3x-ui پیدا شد و برگشت",
+    "level": "info",
     "alert": false
    },
    "sub_sweep_skipped": {

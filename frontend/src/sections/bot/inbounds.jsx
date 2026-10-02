@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import { API_URL } from "../../lib/constants";
 import { errMsg, errText, faNum, okJson } from "../../lib/format";
-import { EmptyState, InfoBox, Msg, PageSkeleton, SectionHead, StatStrip, StatusChip } from "../../ui/index";
+import { EmptyState, InfoBox, Msg, PageSkeleton, SectionHead, Segmented, StatStrip, StatusChip } from "../../ui/index";
 
 // سه حالت انتخاب اینباند. متن‌ها عمداً توضیحی‌اند تا مدیر
 // بدون خواندن مستندات بفهمد هرکدام چه اثری روی کانفیگ مشتری دارد.
@@ -194,46 +194,21 @@ export function BotInboundsSection({ password, tenant = null }) {
             <div className="text-[14px] font-semibold text-white mb-1 flex items-center gap-2">
               <Network size={15} style={{ color: "var(--accent-2)" }} /> کانفیگ روی کدام اینباندها ساخته شود؟
             </div>
-            <p className="text-[13px] mb-4" style={{ color: "var(--muted)" }}>
+            <p className="text-[12.5px] mb-3" style={{ color: "var(--muted)" }}>
               پنل الان <b style={{ color: "var(--dim)" }}>{faNum(inbounds.length)}</b> اینباند دارد که{" "}
               <b style={{ color: "var(--dim)" }}>{faNum(active.length)}</b> تای آن فعال است.
             </p>
 
-            <div className="fx-g3 grid grid-cols-3 gap-2.5">
-              {INBOUND_MODES.map((m) => {
-                const on = mode === m.key;
-                return (
-                  <button key={m.key} onClick={() => setMode(m.key)}
-                    className="p-3.5 rounded-xl text-right transition-all"
-                    style={{
-                      background: on ? "var(--accent-soft)" : "var(--surface-3)",
-                      border: `1px solid ${on ? "var(--accent-2)" : "var(--border)"}`,
-                    }}>
-                    <div className="flex items-center gap-2 mb-1.5 flex-wrap">
-                      <span className="shrink-0 flex items-center justify-center"
-                        style={{
-                          width: 15, height: 15, borderRadius: "50%",
-                          border: `1.5px solid ${on ? "var(--accent-2)" : "var(--border-2)"}`,
-                        }}>
-                        {on && <span style={{ width: 7, height: 7, borderRadius: "50%", background: "var(--accent-2)" }} />}
-                      </span>
-                      <span className="text-[13px] font-bold" style={{ color: on ? "var(--accent-2)" : "var(--dim)" }}>
-                        {m.title}
-                      </span>
-                      {m.tag && (
-                        <span className="text-[11px] px-1.5 py-0.5 rounded"
-                          style={{ background: "var(--ok-soft)", color: "var(--ok)" }}>
-                          {m.tag}
-                        </span>
-                      )}
-                    </div>
-                    <div className="text-[12px] leading-relaxed" style={{ color: "var(--muted)" }}>
-                      {m.desc}
-                    </div>
-                  </button>
-                );
-              })}
+            {/* A three-way choice in one row, its meaning in one line. Three
+                cards with a paragraph each took a band of the page to say
+                "all / default / chosen" (the owner's screenshot). */}
+            <div className="flex items-center gap-3 flex-wrap">
+              <Segmented value={mode} onChange={setMode}
+                items={INBOUND_MODES.map((m) => [m.key, m.tag ? `${m.title} · ${m.tag}` : m.title])} />
             </div>
+            <p className="text-[12.5px] mt-2" style={{ color: "var(--muted)" }}>
+              {(INBOUND_MODES.find((m) => m.key === mode) || {}).desc}
+            </p>
 
             {mode === "default" && (
               <InfoBox>

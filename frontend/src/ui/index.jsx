@@ -7,6 +7,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { NexoraMark } from "../lib/mark.jsx";
 import { createPortal } from "react-dom";
+import { isStaleChunk, reloadForNewBuild } from "../lib/stale.js";
 import {
   AlertTriangle, ArrowDownUp, Check, CheckCircle2, ChevronDown, ChevronLeft,
   ChevronRight, Info, Loader2, Minus, Plus, Search, SlidersHorizontal, X,
@@ -1077,10 +1078,25 @@ export class ErrorBoundary extends React.Component {
   componentDidCatch(err, info) {
     // در کنسول می‌ماند تا اگر لازم شد بشود دنبالش را گرفت
     console.error("بخش پنل خطا داد:", err, info);
+    // A page file the update deleted: the cure is the new build, not "retry"
+    if (isStaleChunk(err)) reloadForNewBuild();
   }
 
   render() {
     if (!this.state.err) return this.props.children;
+    if (isStaleChunk(this.state.err)) {
+      return (
+        <div className="fx-card p-6 fx-anim">
+          <div className="text-[15px] font-semibold mb-2 text-white">پنل به‌روز شده است</div>
+          <p className="text-[13px] leading-relaxed mb-3" style={{ color: "var(--dim)" }}>
+            این صفحه هنوز نسخه‌ی قبلی را دارد. یک‌بار تازه‌اش کنید تا نسخه‌ی جدید بیاید.
+          </p>
+          <button onClick={() => window.location.reload()} className="fx-btn px-4 py-2.5 text-[13px]">
+            تازه کردنِ صفحه
+          </button>
+        </div>
+      );
+    }
     return (
       <div className="fx-card p-6 fx-anim">
         <div className="text-[15px] font-semibold mb-2"

@@ -5850,3 +5850,12 @@ textarea.fx-input { line-height: 1.7; min-height: 56px; }
 .rf-txt > b { font-size: 13px; color: var(--text); }
 .rf-txt > p { margin: 0; font-size: 11.5px; line-height: 1.6; color: var(--muted);
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+
+/* empty states: the reason and the way out, in a third of the height
+   (40 px padding and a 46 px icon made "nothing here" the largest thing on
+   the page) */
+.fx-empty { padding: 18px 18px; }
+.fx-empty-ico { width: 34px; height: 34px; border-radius: 10px; margin-bottom: 8px; }
+.fx-empty-ico svg { width: 17px; height: 17px; }
+.fx-empty-title { font-size: 13.5px; margin-bottom: 3px; }
+.fx-empty .mt-4 { margin-top: 10px; }

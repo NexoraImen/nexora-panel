@@ -3,6 +3,54 @@
 Each entry says what was broken and why, not a list of commits.
 History before 2.0 lives with the 1.x line.
 
+## [2.2.0] - 2026-10-01
+
+### "This section did not open" after every update
+
+`nexora update` rebuilds the panel and the old page files are gone. A tab
+opened before the update still asked for them, and most bot pages showed «این
+بخش باز نشد · Failed to fetch dynamically imported module». The panel now
+reloads itself once when that happens, and the new version comes up.
+
+### Configs deleted in 3x-ui, for real this time
+
+The cleanup took "half the shop missing at once" for a bad read and then asked
+the shop's 3x-ui API to confirm. On the owner's server that API did not
+answer, so nothing was ever removed. A bad read is now one that finds none of
+the shop's configs; if the read finds any, it read the right panel and the
+rest are gone. A config marked gone that shows up in 3x-ui again comes back by
+itself. The customer page in «کاربران ربات» hides deleted configs and reads
+usage from the same 3x-ui read. Some 3x-ui versions answer an unknown config
+with an empty "success" object; that no longer counts as "found".
+
+### The period invoice lost the evening's configs on a UTC server
+
+Config dates are on Tehran's clock; the billing pages' "today" was the
+server's. On a server running UTC, from 20:30 to midnight UTC every day a
+config made that evening counted as tomorrow and was left out of the current
+period page. Both now use Tehran's date.
+
+### Tunnels: iptables, Realm, automatic rollback, speed test
+
+Ideas from XRayMesh, built by us (its license forbids reusing its code):
+
+- **iptables**: the fastest relay, nothing to install. The Iran server
+  forwards the ports straight to the foreign server's IP.
+- **Realm**: a light TCP and UDP relay, also on the Iran server only.
+- **Automatic rollback**: after a tunnel change the server checks that the
+  tunnel works; if it does not, it puts the previous version back and says so.
+- **Speed test**: «تانل» ← «سرورها» ← «تست سرعت» measures the speed between
+  that server and the panel's server.
+
+These need agent 1.7.0; the panel says so when a server's agent is older.
+
+### Calmer pages
+
+The logo spacing control is four steps (the slider filled the wrong way in
+right-to-left), custom CSS is folded, the inbound choice is one selector, the
+password fields sit in one row, empty states are a third of their height, and
+the tunnel dashboard offers a button to make the first tunnel.
+
 ## [2.1.3] - 2026-10-01
 
 ### The backup bot was built, but where no one would look
