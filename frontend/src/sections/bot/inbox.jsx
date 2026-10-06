@@ -14,7 +14,7 @@
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  AlertTriangle, ArrowDown, Check, CheckCheck, ImagePlus, Loader2,
+  AlertTriangle, ArrowDown, Check, CheckCheck, ChevronRight, ImagePlus, Loader2,
   MessageCircle, Pencil, Plus, RefreshCw, Search, Send, Shield, Trash2, X, Zap,
 } from "lucide-react";
 
@@ -86,6 +86,7 @@ export function BotInboxSection({ password, src, note }) {
   const S = useMemo(() => src || adminSrc(password), [src, password]);
   const [threads, setThreads] = useState(null);
   const [open, setOpen] = useState(null);
+  const paneRef = useRef(null);
   const [msgs, setMsgs] = useState(null);
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
@@ -146,9 +147,16 @@ export function BotInboxSection({ password, src, note }) {
   /* پایین‌ماندن — ولی فقط وقتی کاربر خودش پایین است.
      اگر وسطِ تاریخچه باشد و پیام تازه بیاید، پرتاب‌شدن به انتها
      آزاردهنده است؛ به‌جایش دکمه‌ی «برو پایین» می‌آید. */
+  // The log's own scrollTop, not endRef.scrollIntoView: that scrolled every
+  // ancestor too, and on a phone it slid the whole page sideways (RTL main
+  // has overflow-x) and down past the list.
+  const toEnd = () => { const el = logRef.current; if (el) el.scrollTop = el.scrollHeight; };
+  useEffect(() => { if (atEnd) toEnd(); }, [msgs, atEnd]);
+  // On a phone the list and the conversation take turns (CSS, .has-open):
+  // bring the conversation's top under the bar when one opens.
   useEffect(() => {
-    if (atEnd) endRef.current?.scrollIntoView({ block: "end" });
-  }, [msgs, atEnd]);
+    if (open && window.innerWidth <= 820) paneRef.current?.scrollIntoView({ block: "start", inline: "nearest" });
+  }, [open]);
 
   const onScroll = () => {
     const el = logRef.current;
@@ -342,7 +350,7 @@ export function BotInboxSection({ password, src, note }) {
         <EmptyState icon={MessageCircle} text="هنوز پیامی نیامده"
           hint="هر پیامی که مشتری از مینی‌اپ بفرستد همین‌جا می‌آید — و خبر تایید و رد رسیدها هم." />
       ) : (
-        <div className="fx-chat">
+        <div className={`fx-chat ${open ? "has-open" : ""}`}>
           {/* ── ستونِ گفتگوها ── */}
           <aside className="fx-chat-list">
             <div className="fx-chat-search">
@@ -377,7 +385,7 @@ export function BotInboxSection({ password, src, note }) {
           </aside>
 
           {/* ── گفتگو ── */}
-          <section className="fx-chat-pane">
+          <section className="fx-chat-pane" ref={paneRef}>
             {!open ? (
               <div className="fx-chat-blank">
                 <EmptyState icon={MessageCircle} text="یک گفتگو را باز کنید"
@@ -386,6 +394,11 @@ export function BotInboxSection({ password, src, note }) {
             ) : (
               <>
                 <header className="fx-chat-head">
+                  {/* phones only (CSS): the list is hidden while a conversation is open */}
+                  <button className="fx-chat-back" onClick={() => setOpen(null)}
+                    aria-label="بازگشت به فهرستِ گفتگوها">
+                    <ChevronRight size={20} />
+                  </button>
                   <Avatar name={cur?.name || cur?.username} id={cur?.tgId} size={34}
                     src={cur?.avatar} />
                   <div className="min-w-0">
@@ -439,7 +452,7 @@ export function BotInboxSection({ password, src, note }) {
 
                 {!atEnd && (
                   <button className="fx-chat-down" title="برو به آخرین پیام"
-                    onClick={() => { setAtEnd(true); endRef.current?.scrollIntoView({ block: "end" }); }}>
+                    onClick={() => { setAtEnd(true); toEnd(); }}>
                     <ArrowDown size={15} />
                   </button>
                 )}
@@ -504,7 +517,10 @@ export function BotInboxSection({ password, src, note }) {
                     }}
                     placeholder={photo
                       ? "توضیحی برای عکس… (اختیاری)"
-                      : "پیام بنویسید…  (Enter می‌فرستد، Shift+Enter خط تازه)"} />
+                      // a phone has no Shift+Enter, and the hint wrapped into a
+                      // clipped second line of the one-row box
+                      : window.innerWidth <= 820 ? "پیام بنویسید…"
+                        : "پیام بنویسید…  (Enter می‌فرستد، Shift+Enter خط تازه)"} />
                   <button onClick={send} disabled={busy || (!text.trim() && !photo)}
                     aria-label="فرستادن" title="فرستادن">
                     {busy ? <Loader2 size={16} className="animate-spin" />

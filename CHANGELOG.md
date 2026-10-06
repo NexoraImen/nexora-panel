@@ -3,6 +3,50 @@
 Each entry says what was broken and why, not a list of commits.
 History before 2.0 lives with the 1.x line.
 
+## [2.2.3] - 2026-10-06
+
+### Every page measured from 320 to 1920 px
+
+All 57 admin pages were measured at 320, 360, 390, 412, 430, 768, 820, 1024,
+1280, 1366 and 1920 px; the reseller portal, the mini app and the
+subscription page at 320; dialogs opened on a 320 px phone. No page scrolls
+sideways at any width. What was still squeezed on narrow screens is fixed:
+
+- Chart tooltips (every chart): positioned at the middle of the chart, they
+  had half its width to fit into, and on a 320 px phone a date range wrapped
+  into a 33 px column. They now take the width of their text, never more than
+  the screen.
+- The tunnel event rows and the server monitor's command row: a 167 px group
+  beside the text left the text about 55 px. They wrap onto a second line now.
+- Tables on phones: a 7-column table still left one column at 55 px; table
+  cells no longer shrink below 64 px (the table scrolls inside its card).
+- «کلاینت‌ها»: the amount column was 43 px, so «برای این گروه هیچ نرخی…»
+  stood one word a line. It has a minimum width now.
+
+## [2.2.2] - 2026-10-06
+
+### The chat on a phone
+
+«پیام‌ها» (owner) and «چت با مشتری» (reseller portal) share one screen.
+Below 820 px it stacked the conversation list above the conversation: an
+empty "pick a conversation" box filled the screen, an opened conversation
+started below the list, the owner scrolled down to answer, and there was no
+way back but scrolling up. Opening one also slid the page sideways, because
+"scroll to the last message" scrolled every container up to the page. Now a
+phone shows the list or a conversation, as Telegram does. An open
+conversation is one screen tall with the reply box on it, ‹ goes back to the
+list, and only the message log scrolls. The reply box's placeholder no longer
+explains Shift+Enter on a phone, where it wrapped into a clipped second line.
+
+### Pages wider than a phone
+
+Measured at 375 px on every page of the admin panel, the reseller portal and
+the mini app. Three pages scrolled sideways because a «۲۴ ساعت / ۷ روز» style
+switch was 66 to 85 px too wide; it now scrolls inside its own row. Five
+tables (ledger, expenses, firewall rules, intrusion attempts, other servers'
+monitoring) squeezed 5 to 7 columns into 60 px cells, one word a line; they
+keep readable columns now and scroll inside their card.
+
 ## [2.2.1] - 2026-10-06
 
 ### A per-GB reseller stayed "settled" while he kept using it

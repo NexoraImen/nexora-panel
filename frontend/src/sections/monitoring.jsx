@@ -92,7 +92,7 @@ export function MetricCard({ m }) {
       )}
 
       {bad && m.hint && !open && (
-        <div className="text-[11.5px] mt-2 pt-2 flex gap-1.5" style={{ borderTop: "1px solid var(--border)" }}>
+        <div className="text-[11.5px] mt-2 pt-2 flex flex-wrap gap-1.5" style={{ borderTop: "1px solid var(--border)" }}>
           <span style={{ color: "var(--muted)" }} className="shrink-0">چه کار کنم:</span>
           <span dir="auto" className="break-all" style={{ fontFamily: "var(--mono)", color: "var(--accent-2)" }}>{m.hint}</span>
         </div>

@@ -960,6 +960,10 @@ code, kbd, samp, pre { overflow-wrap: anywhere; }
   background: rgba(19,28,46,.84); backdrop-filter: blur(16px) saturate(1.4);
   border: 1px solid var(--border-2); border-radius: var(--r-m);
   box-shadow: var(--e-3); padding: 9px 12px; min-width: 128px;
+  /* absolute at left:50% leaves it half the chart to shrink into: on a
+     320 px phone a date range wrapped into a 33 px column. Size to the
+     content, never wider than the screen (the JS clamps it inside the card). */
+  width: max-content; max-width: min(260px, 86vw);
   transition: opacity var(--m-fast) linear, transform var(--m-fast) var(--sp-snappy);
 }
 .fx-hot .fx-tip { opacity: 1; transform: translate(-50%, -120%) scale(1); }
@@ -2956,11 +2960,22 @@ body.fx-calm *, body.fx-calm *::before, body.fx-calm *::after {
   padding: 0 14px 9px; margin: 0;
 }
 
-/* روی صفحه‌ی باریک، فهرست بالای گفتگو می‌رود */
+.fx-chat-back { display: none; }
+
+/* A phone shows the list or a conversation, never both (as Telegram does).
+   Stacked, the conversation opened under the list: the owner scrolled down
+   to answer, an empty "pick a conversation" box filled the screen, and there
+   was no way back but scrolling up. Open, the pane is one screen tall, so
+   the box to type in is always on it; the bar's 56 px is the margin. */
 @media (max-width: 820px) {
-  .fx-chat { grid-template-columns: minmax(0, 1fr); height: auto; }
-  .fx-chat-list { max-height: 260px; }
-  .fx-chat-pane { min-height: 440px; }
+  .fx-chat { grid-template-columns: minmax(0, 1fr); height: auto; min-height: 0; }
+  .fx-chat-list { max-height: calc(100dvh - 190px); min-height: 240px; }
+  .fx-chat:not(.has-open) .fx-chat-pane,
+  .fx-chat.has-open .fx-chat-list { display: none; }
+  .fx-chat-pane { height: calc(100dvh - 72px); min-height: 360px; scroll-margin-top: 64px; }
+  .fx-chat-back { display: grid; place-items: center; flex: none; width: 36px; height: 36px;
+    margin-inline-start: -6px; border-radius: 10px; color: var(--text); }
+  .fx-chat-back:active { background: var(--hair-2); }
   .fx-bub { max-width: 84%; }
 }
 
@@ -4823,6 +4838,17 @@ body::before {
 @media (max-width: 767px) {
   .fx-metric-help { width: 32px; height: 32px; }
   .fx-seg > button { min-height: 34px; }
+  /* never wider than its row: three long choices pushed tun-diag, res-inbounds
+     and bot-inbounds 66-85 px past a 375 px screen. Scrolls inside itself;
+     the pill is absolute in the same box, so it scrolls along. */
+  .fx-seg { max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+  /* every .fx-table sits in an overflow-x:auto box, but width:100% squeezed
+     5-7 columns into 375 px: ~60 px cells, one word a line (ledger, expenses,
+     firewall, intrusion, node monitor). Keep columns readable; the box scrolls. */
+  .fx-table { min-width: 560px; }
+  /* 7 columns in 560 px still left one at 55 px; a cell floor grows the
+     table (which scrolls in its box) instead of wrapping each word */
+  .fx-table th, .fx-table td { min-width: 64px; }
   .fx-tun .fx-btn, .fx-tun .fx-btn-g { min-height: 34px; }
   .fx-info-more { min-height: 32px; }
   .fx-pager > button { min-width: 34px !important; height: 34px !important; }
