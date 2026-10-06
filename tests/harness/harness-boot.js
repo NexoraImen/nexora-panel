@@ -4878,10 +4878,10 @@
      "coins": 28,
      "ref_code": "QT2URV",
      "referred_by": null,
-     "is_blocked": 0,
-     "blocked_by": null,
+     "is_blocked": 1,
+     "blocked_by": "admin",
      "left_at": null,
-     "deleted_at": null,
+     "deleted_at": "2026-10-03 11:20:00",
      "trial_used": 0,
      "phone_asked": 0,
      "lang": "fa",
@@ -5033,7 +5033,8 @@
     "noPhone": 5,
     "withBalance": 13,
     "withCoins": 16,
-    "referred": 4
+    "referred": 4,
+    "removed": 1
    }
   };
 
@@ -10427,6 +10428,75 @@
              month: sum(days), hours: hours, days: days,
              lastSample: new Date(now.getTime() - 200e3).toISOString().slice(0, 19) };
   }
+  // «چرا سرورِ ایران این‌قدر؟» — the shape of `linkcheck.traffic_why` plus
+  // the route's own keys. Realistic on purpose: a flood on the Iran IP, a
+  // tunnel on wssmux, a GRE device by hand, and 3x-ui without an Iran rule.
+  // The old server («مشهد», agent 1.5.2) answers "no split yet".
+  function TRAFFIC_WHY(u) {
+    var GB = 1073741824, days = +((u.match(/days=(\d+)/) || [])[1] || 1);
+    var old = /node=2\b/.test(u), k = days === 1 ? 1 : days === 7 ? 6.6 : 27;
+    var g = function (rx, tx) { return { rx: Math.round(rx * GB * k), tx: Math.round(tx * GB * k) }; };
+    var parts = { customers: g(61.2, 58.9), foreign: g(66.0, 70.4), ssh: g(0.02, 0.05),
+                  other: g(41.7, 3.1), virt: g(12.4, 12.1) };
+    var iran = Math.round((61.2 + 58.9 + 66 + 70.4 + 0.07 + 44.8 + 6.3) * GB * k);
+    var metering = [{ label: "سرورِ ایران", rx: Math.round(iran * 0.55), tx: Math.round(iran * 0.45) },
+                    { label: "سرورِ خارج", rx: Math.round(142 * GB * k), tx: Math.round(139 * GB * k) }];
+    var node = { id: old ? 2 : 1, name: old ? "مشهد" : "تهران-۱", agentVersion: old ? "1.5.2" : "1.7.0",
+                 agentStale: old, agentNeed: "1.6.0", lastSeen: new Date().toISOString().slice(0, 19) };
+    var since = new Date(Date.now() - days * 86400e3);
+    var sinceIso = new Date(since.getTime() - since.getTimezoneOffset() * 60e3).toISOString().slice(0, 13);
+    if (old) {
+      return { level: "warn", title: "سهمِ هر بخش هنوز اندازه گرفته نشده",
+        text: "شمارنده‌های تفکیکی (مشتری‌ها، سرورِ خارج، SSH، بقیه) روی سرورِ ایران از اولین سنجش بعد از به‌روزرسانیِ پنل شروع می‌کنند.",
+        findings: [
+          { id: "noparts", level: "warn", title: "سهمِ هر بخش هنوز اندازه گرفته نشده",
+            why: "شمارنده‌های تفکیکی (مشتری‌ها، سرورِ خارج، SSH، بقیه) روی سرورِ ایران از اولین سنجش بعد از به‌روزرسانیِ پنل شروع می‌کنند.",
+            fix: "«سنجش همین حالا» را بزنید و بعد از دورِ بعدیِ سنجش دوباره ببینید.", items: [] },
+          { id: "metering", level: "info", title: "چرا صورتحسابِ دو دیتاسنتر فرق دارد",
+            why: "هر بایتِ مشتری یک‌بار وارد و یک‌بار از سرورِ ایران خارج می‌شود.",
+            fix: "از دیتاسنترِ ایران بپرسید کدام را حساب می‌کند.", items: [] }],
+        numbers: { iran: Math.round(180 * GB * k), foreign: null, customers: null, parts: null, unaccounted: null },
+        metering: metering.slice(0, 1), node: node, days: days, since: sinceIso, feeds: 1,
+        hasSplit: false, peers: [], ports: [], ifaces: [] };
+    }
+    return {
+      level: "bad", title: "۱۵٪ از ترافیکِ سرورِ ایران مالِ تانل نیست",
+      text: "۴۴٫۸ گیگ (۱۵٪) از ترافیکِ این سرور نه مالِ مشتری‌هاست و نه مالِ تانل به سرورِ خارج. بیشترش ورودی است: اسکن یا حمله‌ی حجمی (DDoS) به آی‌پیِ سرور. دیتاسنتر همین را هم حساب می‌کند، حتی وقتی سرور جوابش را نمی‌دهد.",
+      findings: [
+        { id: "other", level: "bad", title: "۱۵٪ از ترافیکِ سرورِ ایران مالِ تانل نیست",
+          why: "۴۴٫۸ گیگ (۱۵٪) از ترافیکِ این سرور نه مالِ مشتری‌هاست و نه مالِ تانل به سرورِ خارج. بیشترش ورودی است: اسکن یا حمله‌ی حجمی (DDoS) به آی‌پیِ سرور. دیتاسنتر همین را هم حساب می‌کند، حتی وقتی سرور جوابش را نمی‌دهد.",
+          fix: "در «فایروال»ِ سرورِ ایران فقط پورت‌های تانل و SSH را باز بگذارید و از دیتاسنتر فیلترِ ضدِ DDoS بخواهید. اگر حمله ادامه دارد، عوض‌کردنِ آی‌پی ارزان‌ترین راه است.",
+          items: ["سرویس: پورتِ \u206680/tcp (nginx)\u2069", "سرویس: پورتِ \u206653/udp (systemd-resolve)\u2069",
+                  "اتصال: \u2066185.220.101.4:80 (nginx)\u2069 — ۱٫۲ گیگ"] },
+        { id: "overhead", level: "warn", title: "پای تانل ۱۴٪ بیشتر از مصرفِ مشتری‌ها جابه‌جا می‌کند",
+          why: "با سرورِ خارج ۱۳۶٫۴ گیگ رد و بدل شده و با مشتری‌ها ۱۲۰٫۱ گیگ. اختلاف سربارِ خودِ تانل است: بسته‌بندی، رمزنگاری و ارسالِ دوباره. ترنسپورت‌های پرسربارِ این سرور: backhaul/wssmux.",
+          fix: "ترنسپورتِ tcp یا tcpmux سربارِ کمتری از ws، wss و grpc دارد؛ KCP و QUIC به‌خاطرِ ارسالِ دوباره از همه پرهزینه‌ترند. اگر مسیرِ مستقیمِ ایران به خارج باز است، موتورِ iptables یا Realm اصلاً بسته‌بندی ندارد.",
+          items: [] },
+        { id: "virt", level: "info", title: "دستگاه‌های تانلی دیگر دو بار شمرده نمی‌شوند",
+          why: "۲۴٫۵ گیگ روی gre1 رد شد. همین بایت‌ها بسته‌بندی‌شده روی کارتِ شبکه هم هستند. پنل تا نسخه‌ی ۲.۲.۰ هر دو را جمع می‌زد، پس «حجمِ ترافیکِ» این سرور بیشتر از چیزی که دیتاسنتر می‌بیند نشان داده می‌شد.",
+          fix: "", items: [] },
+        { id: "sides", level: "ok", title: "دو سرور هم‌اندازه‌اند (۱٫۱ برابر)",
+          why: "ایران ۳۰۶٫۵ و خارج ۲۸۱٫۰ گیگ. در شبکه چیزی اضافه مصرف نمی‌شود؛ در تانلِ سالم دو سرِ تانل تقریباً یک اندازه جابه‌جا می‌کنند.",
+          fix: "", items: [] },
+        { id: "per-customer", level: "warn", title: "به‌ازای هر ۱ گیگ مصرفِ مشتری، سرورِ ایران ۲٫۵ گیگ جابه‌جا کرده",
+          why: "در تانلِ سالم هر بایتِ مشتری دو بار از کارتِ سرورِ ایران رد می‌شود: یک‌بار بینِ مشتری و سرورِ ایران، یک‌بار بینِ سرورِ ایران و خارج. پس عددِ سالم نزدیکِ ۲ است. این‌جا حدودِ ۶۱٫۷ گیگ بیشتر از دو برابر است.",
+          fix: "", items: [] },
+        { id: "metering", level: "info", title: "چرا صورتحسابِ دو دیتاسنتر فرق دارد",
+          why: "هر بایتِ مشتری یک‌بار وارد و یک‌بار از سرورِ ایران خارج می‌شود. دیتاسنتری که «ورودی + خروجی» را حساب می‌کند دو برابرِ دیتاسنتری را می‌گیرد که فقط «خروجی» را حساب می‌کند — بی‌آن‌که چیزی خراب باشد. جدولِ پایین هر سه حالت را برای هر سرور نشان می‌دهد.",
+          fix: "از دیتاسنترِ ایران بپرسید کدام را حساب می‌کند. اگر «ورودی + خروجی» است، پلنی بخواهید که فقط خروجی یا فقط بین‌الملل را حساب کند: پای تانل (به سرورِ خارج) بین‌الملل است و پای مشتری‌ها داخلی.",
+          items: [] },
+        { id: "routing", level: "info", title: "سایت‌های ایرانی هم از تانل رد می‌شوند",
+          why: "در مسیریابیِ 3x-ui قاعده‌ای برای سایت‌های ایرانی نیست. وقتی مشتری با VPNِ روشن آپارات یا دیجی‌کالا باز می‌کند، ترافیک از ایران به خارج می‌رود و برمی‌گردد، و سرورِ ایران همه‌اش را حساب می‌کند.",
+          fix: "در اپِ مشتری مسیریابیِ «ایران مستقیم» (Bypass Iran) را روشن کنید؛ Happ، v2rayNG و Hiddify این گزینه را دارند.",
+          items: [] }],
+      numbers: { iran: iran, foreign: Math.round(281 * GB * k), customers: Math.round(122.4 * GB * k),
+                 parts: parts, unaccounted: Math.round(6.3 * GB * k) },
+      metering: metering, node: node, days: days, since: sinceIso, feeds: 1, hasSplit: true,
+      peers: ["203.0.113.9"], ports: [443, 2053, 8443],
+      ifaces: [{ name: "eth0", kind: "physical", rx: 9e12, tx: 8e12 },
+               { name: "gre1", kind: "tunnel", rx: 2e12, tx: 2e12 }] };
+  }
+
   var TRAFFIC = { servers: [
     Object.assign({ id: 0, name: "سرورِ پنل", role: "panel", agentStale: false }, _traffic(9.5e9, false)),
     Object.assign({ id: 1, name: "تهران-۱", role: "iran", agentVersion: "1.6.0", agentStale: false,
@@ -10615,6 +10685,11 @@
    },
    "user_unblocked": {
     "label": "مسدودیِ کاربر برداشته شد",
+    "level": "info",
+    "alert": false
+   },
+   "user_restored": {
+    "label": "کاربرِ حذف‌شده یا مسدود بازگردانده شد",
     "level": "info",
     "alert": false
    },
@@ -11381,6 +11456,24 @@ var D_CODES = { ready: true,
     if (u.indexOf("/billing/fx") >= 0) return BILL_FX;
     if (u.indexOf("/billing/xui-path") >= 0) return BILL_XUIPATH;
     if (u.indexOf("/billing/diagnose") >= 0) return BILL_DIAG;
+    // «بررسی حساب‌ها» (billing_audit): one group with two numbers (the
+    // settled per-GB case found 2026-10-06), one without rates, two clean
+    if (u.indexOf("/billing/audit") >= 0) return { ready: true, bad: 2, groups: [
+      { key: "arman", label: "آرمان", due: 0, invoiceDue: 1845000, paid: 0, balance: 0, configs: 22, ok: false,
+        findings: [
+          { level: "bad", text: "داشبورد ۰ می‌گوید و صورتحساب ۱٬۸۴۵٬۰۰۰؛ دو عدد برای یک نماینده." },
+          { level: "info", text: "۲۲ کانفیگ پیش از «تسویه‌شده تا» است و در این دوره نمی‌آید." },
+          { level: "info", text: "حجمی: ۶۱۵ گیگ از آخرین تسویه × ۳٬۰۰۰ = ۱٬۸۴۵٬۰۰۰ (کلِ مصرف از اول: ۱٬۵۳۵ گیگ)." }] },
+      { key: "vista", label: "ویستا", due: 0, invoiceDue: 0, paid: 0, balance: 0, configs: 6, ok: false,
+        findings: [
+          { level: "bad", text: "۶ کانفیگ نرخ ندارد و صفر حساب می‌شود (برای این گروه هیچ نرخی تعریف نشده)." }] },
+      { key: "unlimited", label: "unlimited", due: 8930000, invoiceDue: 8930000, paid: 4000000, balance: 4930000,
+        configs: 100, ok: true,
+        findings: [
+          { level: "warn", text: "ماه‌های ۱۴ کانفیگ تخمینی است: تمدیدشان در پنل ثبت نشده و از تاریخ انقضا حدس زده شد." },
+          { level: "info", text: "۳ کانفیگ حساب نمی‌شود چون هیچ‌وقت استفاده نشده (ساخته شد و هرگز روشن نشد: ۳)." }] },
+      { key: "nima", label: "نیما", due: 612000, invoiceDue: 612000, paid: 0, balance: 612000, configs: 10, ok: true,
+        findings: [] } ] };
     if (u.indexOf("/billing/payments") >= 0 && method === "GET") return PAY_PAGE(u);
     if (u.indexOf("/billing/expenses") >= 0 && method === "GET") return BILL_EXPENSES;
     if (u.indexOf("/billing/") >= 0 && method !== "GET") return { ok: true, note: "ثبت شد" };
@@ -11643,6 +11736,7 @@ var D_CODES = { ready: true,
     }
     if (u.indexOf("/admin/inbounds/doctor") >= 0) return INB_DOC();
     if (u.indexOf("/admin/link/diag") >= 0) return LINK_DIAG;
+    if (u.indexOf("/admin/traffic/why") >= 0) return TRAFFIC_WHY(u);
     if (u.indexOf("/admin/traffic") >= 0) return TRAFFIC;
     if (u.indexOf("/admin/store-addon") >= 0 || u.indexOf("/admin/portal-addon") >= 0) {
       var ak = u.indexOf("store") >= 0 ? "store" : "theme";
@@ -11707,8 +11801,11 @@ var D_CODES = { ready: true,
         withCoins: function (x) { return x.coins > 0; },
         referred: function (x) { return !!x.referred_by; },
         blocked: function (x) { return !!x.is_blocked; },
+        removed: function (x) { return !!x.deleted_at; },
       };
-      var ur = USERS.users.filter(F[uf] || F.all).filter(function (x) {
+      // as `_users_page`: a removed user is only under «حذف‌شده»
+      var ur = USERS.users.filter(function (x) { return (uf === "removed") === !!x.deleted_at; })
+        .filter(F[uf] || F.all).filter(function (x) {
         return !uq || [x.first_name, x.username, x.phone, String(x.tg_id)].join(" ").indexOf(uq) >= 0;
       });
       return Object.assign({}, USERS, { users: ur.slice(uo, uo + ul), total: ur.length });

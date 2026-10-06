@@ -180,6 +180,19 @@ check("… marked deleted in the bot", all(r["deleted_at"] and r["deleted_why"] 
 st, j = call("/api/admin/bot/users")
 check("… and off the users list", st == 200 and all(u["tg_id"] != 7002 for u in j.get("users", [])), j.get("users"))
 check("… banned too, so /start does not bring them back", not answered(7002))
+# The owner (2026-10-02): a removed user could never come back.
+_rm = AP._users_page(OWNER, filter="removed")
+check("removed users are listed under their own filter, with a count",
+      [u["tg_id"] for u in _rm["users"]] == [7002] and _rm["counts"].get("removed") == 1, _rm.get("counts"))
+check("… and the other counts leave them out",
+      _rm["counts"].get("all") == len(AP._users_page(OWNER)["users"]), _rm.get("counts"))
+st, j = call("/api/admin/bot/users/7002/restore", "POST", {})
+check("restore: back on the list and answered again",
+      st == 200 and any(u["tg_id"] == 7002 for u in AP._users_page(OWNER)["users"]) and answered(7002), (st, j))
+check("… on record", bool(DO.q("SELECT 1 FROM events WHERE tenant_id=? AND kind='user_restored'", (OWNER,))))
+check("… its deleted configs stay deleted (a returning user buys again)",
+      all(r["deleted_at"] for r in DO.q("SELECT * FROM subscriptions WHERE tenant_id=? AND user_id=?",
+                                         (OWNER, U2["id"]))))
 
 U3 = user(DO, 7003)
 sub(DO, U3, "own_c")

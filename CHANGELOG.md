@@ -3,6 +3,63 @@
 Each entry says what was broken and why, not a list of commits.
 History before 2.0 lives with the 1.x line.
 
+## [2.2.1] - 2026-10-06
+
+### A per-GB reseller stayed "settled" while he kept using it
+
+After a settlement, the dashboard and «واسطه‌ها و نرخ» showed 0 for a per-GB
+reseller however much he used. The dashboard billed usage only once it had
+seen a config made inside the current period, and that check came after the
+line that skips configs made before the settlement. A reseller who made his
+configs once and was then settled had none, so his usage bill fell out of the
+dashboard. The invoice and his own portal showed the right sum all along.
+Every billable per-GB group is now billed by usage, the same way the invoice
+does it.
+
+### The invoice charged resellers for the owner's own bot sales
+
+A config sold by the owner's bot is the owner's customer. The dashboard always
+left it out of a reseller's debt, even when it sat in the reseller's group,
+but the invoice, the period page and so the reseller's portal billed it. Now
+all of them leave it out and say how many were left out.
+
+### «بررسی حساب‌ها» (Check the accounts)
+
+A button on «واسطه‌ها و نرخ». For every reseller it shows the dashboard's
+figure next to the invoice's (they must be the same number), plus each reason
+a config is not counted: no rate, never used, before the settlement,
+estimated months, sold by your own bot, and the GB × rate line. It found both
+defects above.
+
+### «چرا این‌قدر؟» on the Iran server's traffic
+
+«تانل» → «حجمِ ترافیک» explains why an Iran server moves more than expected:
+the share that goes to the customers, to the tunnel to the foreign server, to
+SSH, and to everything else. It compares that with the foreign servers and
+with what the customers really used in 3x-ui. Each finding comes with how to
+fix it: a flood or scans on the IP, a service on the Iran server that is not
+the tunnel (xray running there directly, a web server), tunnel overhead from
+the transport (ws/wss/grpc/KCP), resends to customers, how datacenters bill
+in versus out, and Iranian sites going through the tunnel.
+
+The split comes from three iptables chains on the Iran server that only
+count. Every rule returns and none accepts or drops, so filtering is
+unchanged. They arrive with the panel's update; no agent update is needed.
+
+### The traffic total counted tunnel interfaces twice
+
+The traffic page added a GRE, 6to4 or WireGuard interface on top of the
+physical card it rides on, so the same bytes counted twice. Only the physical
+card is counted now; tunnel interfaces are listed apart. The first reading
+after the update takes a new starting point instead of putting the whole
+difference into one hour.
+
+### Restoring a removed bot user
+
+«کاربران ربات» → «فیلتر» → «حذف‌شده» lists removed users, each with a restore
+button (for the owner, and for resellers in their portal). The person comes
+back; configs deleted from 3x-ui do not.
+
 ## [2.2.0] - 2026-10-01
 
 ### "This section did not open" after every update

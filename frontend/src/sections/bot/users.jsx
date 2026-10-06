@@ -8,7 +8,7 @@ import React, { useState, useEffect, useMemo, useRef } from "react";
 import { useDebouncedChange } from "../../lib/hooks";
 import { createPortal } from "react-dom";
 import {
-  AlertTriangle, Ban, ChevronLeft, Loader2, Package, RefreshCw, Send, Trash2, Users, X,
+  AlertTriangle, Ban, ChevronLeft, Loader2, Package, RefreshCw, RotateCcw, Send, Trash2, Users, X,
 } from "lucide-react";
 import { adminSrc } from "../../lib/botsrc";
 import { isoToJalaliLabel } from "../../ui/jalali";
@@ -29,6 +29,7 @@ export const USER_FILTERS = [
   { key: "withCoins", label: "سکه دار" },
   { key: "referred", label: "با دعوت" },
   { key: "blocked", label: "مسدود" },
+  { key: "removed", label: "حذف‌شده" },
 ];
 
 export const USER_SORTS = [
@@ -120,7 +121,10 @@ export function BotUsersSection({ password, src }) {
     const { u, kind } = ask;
     setAsk(null);
     try {
-      if (kind === "delete") {
+      if (kind === "restore") {
+        await S.restoreUser(u.tg_id);
+        setNote({ t: "ok", m: `«${u.first_name || u.tg_id}» برگشت و دوباره می‌تواند از ربات استفاده کند.` });
+      } else if (kind === "delete") {
         const r = await S.removeUser(u.tg_id);
         setNote({ t: "ok", m: `«${u.first_name || u.tg_id}» حذف شد${r.configs ? ` و ${faNum(r.configs)} کانفیگش از 3x-ui پاک شد` : ""}.` });
       } else {
@@ -242,7 +246,9 @@ export function BotUsersSection({ password, src }) {
                   {u.activeSubs > 0 && (
                     <span className="fx-pill" style={{ background: "var(--ok-soft)", color: "var(--ok)" }}>فعال</span>
                   )}
-                  {u.is_blocked === 1 && (
+                  {u.deleted_at ? (
+                    <span className="fx-pill" style={{ background: "var(--danger-soft)", color: "var(--danger)" }}>حذف‌شده</span>
+                  ) : u.is_blocked === 1 && (
                     <span className="fx-pill" style={{ background: "var(--danger-soft)", color: "var(--danger)" }}>مسدود</span>
                   )}
                 </button>
@@ -271,6 +277,13 @@ export function BotUsersSection({ password, src }) {
                     title="پیام به این کاربر" aria-label={`پیام به ${u.first_name || u.tg_id}`}>
                     <Send size={13} />
                   </button>
+                  {u.deleted_at ? (
+                    <button onClick={() => setAsk({ u, kind: "restore" })} className="fx-ico-btn"
+                      style={{ color: "var(--ok)" }} title="بازگرداندنِ کاربر"
+                      aria-label={`بازگرداندنِ ${u.first_name || u.tg_id}`}>
+                      <RotateCcw size={13} />
+                    </button>
+                  ) : (<>
                   <button onClick={() => setAsk({ u, kind: u.is_blocked === 1 ? "unblock" : "block" })}
                     className="fx-ico-btn" style={u.is_blocked === 1 ? { color: "var(--danger)" } : undefined}
                     title={u.is_blocked === 1 ? "برداشتنِ مسدودی" : "مسدود کردن"}
@@ -281,6 +294,7 @@ export function BotUsersSection({ password, src }) {
                     title="حذفِ کاربر و کانفیگ‌هایش" aria-label={`حذفِ ${u.first_name || u.tg_id}`}>
                     <Trash2 size={13} />
                   </button>
+                  </>)}
                   <button onClick={() => setDetail(u.tg_id)} className="fx-ico-btn"
                     title="پرونده‌ی کاربر" aria-label={`پرونده‌ی ${u.first_name || u.tg_id}`}>
                     <ChevronLeft size={14} />
@@ -299,13 +313,17 @@ export function BotUsersSection({ password, src }) {
 
       {ask && (
         <ConfirmModal
-          title={ask.kind === "delete" ? "حذفِ کاربر" : ask.kind === "block" ? "مسدود کردنِ کاربر" : "برداشتنِ مسدودی"}
-          desc={ask.kind === "delete"
-            ? `«${ask.u.first_name || ask.u.tg_id}» مسدود می‌شود، همه‌ی کانفیگ‌هایش از 3x-ui پاک می‌شود و از فهرست می‌رود. سفارش‌ها و پرداخت‌هایش در حساب‌ها می‌ماند. برگشت ندارد.`
+          title={ask.kind === "delete" ? "حذفِ کاربر" : ask.kind === "block" ? "مسدود کردنِ کاربر"
+            : ask.kind === "restore" ? "بازگرداندنِ کاربر" : "برداشتنِ مسدودی"}
+          desc={ask.kind === "restore"
+            ? `«${ask.u.first_name || ask.u.tg_id}» دوباره به فهرست برمی‌گردد و ربات و مینی‌اپ جوابش را می‌دهند. کانفیگ‌هایی که پاک شده بودند برنمی‌گردند؛ از نو می‌خرد.`
+            : ask.kind === "delete"
+            ? `«${ask.u.first_name || ask.u.tg_id}» مسدود می‌شود، همه‌ی کانفیگ‌هایش از 3x-ui پاک می‌شود و از فهرست می‌رود. سفارش‌ها و پرداخت‌هایش در حساب‌ها می‌ماند. از فیلترِ «حذف‌شده» می‌شود برش گرداند؛ کانفیگ‌هایش نه.`
             : ask.kind === "block"
               ? `ربات و مینی‌اپ دیگر به «${ask.u.first_name || ask.u.tg_id}» جواب نمی‌دهند. کانفیگ‌هایش کار می‌کنند، مگر حذفش کنید.`
               : `«${ask.u.first_name || ask.u.tg_id}» دوباره می‌تواند از ربات استفاده کند.`}
-          confirmLabel={ask.kind === "delete" ? "حذف کن" : ask.kind === "block" ? "مسدود کن" : "بردار"}
+          confirmLabel={ask.kind === "delete" ? "حذف کن" : ask.kind === "block" ? "مسدود کن"
+            : ask.kind === "restore" ? "برگردان" : "بردار"}
           onConfirm={act} onCancel={() => setAsk(null)} />
       )}
 

@@ -2372,6 +2372,10 @@ _USER_FILTERS = {
     "withBalance": "COALESCE(u.balance,0) > 0",
     "withCoins": "COALESCE(u.coins,0) > 0",
     "referred": "u.referred_by IS NOT NULL",
+    # Removed users: off every other list, and here to be brought back (the
+    # owner, 2026-10-02: a removed user could never come back, even when the
+    # removal was a mistake).
+    "removed": "u.deleted_at IS NOT NULL",
 }
 
 _USER_SORTS = {
@@ -2460,6 +2464,30 @@ def _user_delete(t, tg_id, by):
     return {"ok": True, "configs": len(subs)}
 
 
+def _user_restore(t, tg_id, by):
+    """
+    Bring a removed (or banned) user back: the bot and the mini app answer
+    them again and they are on the list. Their deleted configs stay deleted:
+    those were taken out of 3x-ui (and off a reseller's bill), so a returning
+    user buys again.
+    """
+    h = _bot_handlers()
+    d = h.DB.TenantDB(t["id"])
+    u = d.get_user(int(tg_id))
+    if not u:
+        raise HTTPException(404, detail="این کاربر در این ربات نیست")
+    d.exec("UPDATE users SET deleted_at=NULL, is_blocked=0, blocked_by=NULL "
+           "WHERE tenant_id=? AND id=?", (t["id"], u["id"]))
+    d.log("user_restored", u["id"], {"by": by})
+    return {"ok": True}
+
+
+@app.post("/api/admin/bot/users/{tg_id}/restore")
+def bot_user_restore(tg_id: int, x_admin_password: str = Header(...)):
+    check_auth(x_admin_password)
+    return _user_restore(_root_tenant_row(), tg_id, "owner")
+
+
 @app.post("/api/admin/bot/users/{tg_id}/block")
 def bot_user_block(tg_id: int, body: dict, x_admin_password: str = Header(...)):
     check_auth(x_admin_password)
@@ -2483,8 +2511,11 @@ def _users_page(tid, q="", limit=50, offset=0, filter="all", sort="new",
     if not con:
         return {"users": [], "dbReady": False}
 
-    # removed users are off the list; their orders stay for the accounts
-    where = [_USER_FILTERS.get(filter, "1=1"), "u.deleted_at IS NULL"]
+    # removed users are off the list (but for their own filter); their
+    # orders stay for the accounts
+    where = [_USER_FILTERS.get(filter, "1=1")]
+    if filter != "removed":
+        where.append("u.deleted_at IS NULL")
     params = []
     if q:
         like = f"%{q}%"
@@ -2534,9 +2565,11 @@ def _users_page(tid, q="", limit=50, offset=0, filter="all", sort="new",
         if counts:
             try:
                 sel = ", ".join(
-                    f'SUM(CASE WHEN ({cond}) THEN 1 ELSE 0 END) AS "{key}"'
+                    f'SUM(CASE WHEN ({cond})'
+                    + ('' if key == "removed" else ' AND u.deleted_at IS NULL')
+                    + f' THEN 1 ELSE 0 END) AS "{key}"'
                     for key, cond in _USER_FILTERS.items())
-                row = con.execute(f"SELECT {sel} FROM users u WHERE u.deleted_at IS NULL").fetchone()
+                row = con.execute(f"SELECT {sel} FROM users u").fetchone()
                 n_counts = {k: int(row[k] or 0) for k in _USER_FILTERS}
             except Exception:
                 log.debug("شمارش فیلترها ناموفق", exc_info=True)
@@ -4727,7 +4760,7 @@ def subs_sweep(x_admin_password: str = Header(...)):
 _SUB_SHOP_AT = {}
 
 
-def sub_sweep_shop_now(t, clients=None, min_gap=60):
+def sub_sweep_shop_now(t, clients=None, min_gap=60, now=None):
     """
     The sweep for one shop, now (at most once a minute per shop). The mini
     app calls it before listing a buyer's configs: with only the hourly pass,
@@ -4744,7 +4777,10 @@ def sub_sweep_shop_now(t, clients=None, min_gap=60):
         return None
     try:
         index = {c.get("email"): c for c in clients if c.get("email")}
-        return _sub_lifecycle_shop(_bot_handlers(), t, index, datetime.now())
+        # `now` for tests with a fixed clock: the mini app's own call used the
+        # real one, and five days after the test's date it deleted configs
+        # the test had not yet aged (CI red from 2026-10-06 12:00)
+        return _sub_lifecycle_shop(_bot_handlers(), t, index, now or datetime.now())
     except Exception as e:
         log.warning("sub sweep (shop %s, on demand) failed: %s", t.get("id"), e)
         return None

@@ -341,14 +341,72 @@ def disks():
 #  شبکه — مهم‌ترین بخش برای سرور VPN
 # ═══════════════════════════════════════════════════════════
 
-def _net_counters():
+#: The counted-card rule, copied from `linkcheck.iface_kind` (Pro): this file
+#: is core and runs alone on agents, so it cannot import it. test-linkcheck
+#: compares the two on a fixture tree; change both or neither.
+SYS_NET = "/sys/class/net"
+_TUNNEL_ARPHRD = {768, 769, 776, 778, 823, 65534}
+_TUNNEL_NAMES = ("wg", "warp", "tun", "tap", "gre", "erspan", "sit", "ipip",
+                 "ip6tnl", "ip6gre", "6to4", "vxlan")
+_VIRTUAL_NAMES = ("veth", "docker", "br-", "virbr", "cni", "flannel")
+
+
+def _default_ifaces():
+    out = set()
+    for line in _read("/proc/net/route").splitlines()[1:]:
+        f = line.split()
+        if len(f) > 7 and f[1] == "00000000" and f[7] == "00000000":
+            out.add(f[0])
+    for line in _read("/proc/net/ipv6_route").splitlines():
+        f = line.split()
+        if len(f) >= 10 and set(f[0]) == {"0"} and f[1] == "00" and f[-1] != "lo":
+            out.add(f[-1])
+    return out
+
+
+def _iface_kind(name, default=None, root=None):
+    """
+    physical | slave | tunnel | virtual | loopback; only physical is counted.
+    A tunnel device (GRE, 6to4, WireGuard) carries bytes the physical card
+    already carried wrapped: adding it counted them twice.
+    """
+    if name == "lo":
+        return "loopback"
+    root = SYS_NET if root is None else root
+    base = os.path.join(root, name)
+    low = name.lower()
+    if not os.path.isdir(base):
+        if low.startswith(_TUNNEL_NAMES):
+            return "tunnel"
+        if low.startswith(_VIRTUAL_NAMES):
+            return "virtual"
+        return "physical"
+    try:
+        kind = int(_read(os.path.join(base, "type")).strip() or 1)
+    except ValueError:
+        kind = 1
+    if kind in _TUNNEL_ARPHRD:
+        return "tunnel"
+    default = _default_ifaces() if default is None else default
+    master = os.path.join(base, "master")
+    if os.path.exists(master) or os.path.islink(master):
+        m = (os.path.basename(os.path.realpath(master)) if os.path.islink(master)
+             else _read(master).strip())
+        if m and m != name and _iface_kind(m, default, root) == "physical":
+            return "slave"
+    if name in default or os.path.exists(os.path.join(base, "device")):
+        return "physical"
+    return "virtual"
+
+
+def _net_counters(default=None, root=None):
     res = {}
     for line in _read("/proc/net/dev").split("\n")[2:]:
         if ":" not in line:
             continue
         name, rest = line.split(":", 1)
         name = name.strip()
-        if name == "lo" or name.startswith(("veth", "docker", "br-")):
+        if _iface_kind(name, default, root) != "physical":
             continue
         f = rest.split()
         if len(f) >= 9:

@@ -128,6 +128,10 @@ KINDS = {
         "label": "مسدودیِ کاربر برداشته شد",
         "level": "info", "alert": False,
     },
+    "user_restored": {
+        "label": "کاربرِ حذف‌شده یا مسدود بازگردانده شد",
+        "level": "info", "alert": False,
+    },
     "user_deleted": {
         "label": "کاربر حذف شد و کانفیگ‌هایش پاک شد",
         "level": "warn", "alert": False,

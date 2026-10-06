@@ -50,6 +50,7 @@ export function adminSrc(password) {
     block: (tgId, block) => req(`/api/admin/bot/users/${tgId}/block`, H,
                                 { method: "POST", body: { block } }),
     removeUser: (tgId) => req(`/api/admin/bot/users/${tgId}`, H, { method: "DELETE" }),
+    restoreUser: (tgId) => req(`/api/admin/bot/users/${tgId}/restore`, H, { method: "POST", body: {} }),
     // only the owner's panel reads 3x-ui; a reseller's shop is swept with it
     sweep: () => req("/api/admin/subs/sweep", H, { method: "POST", body: {} }),
     message: (tgId, text) => req(`/api/admin/bot/message/${tgId}`, H,
@@ -78,6 +79,7 @@ export function portalSrc(token) {
     block: (tgId, block) => req(`/api/portal/users/${tgId}/block`, H,
                                 { method: "POST", body: { block } }),
     removeUser: (tgId) => req(`/api/portal/users/${tgId}`, H, { method: "DELETE" }),
+    restoreUser: (tgId) => req(`/api/portal/users/${tgId}/restore`, H, { method: "POST", body: {} }),
     message: (tgId, text) => req(`/api/portal/message/${tgId}`, H,
                                  { method: "POST", body: { text } }),
     inbox: (uid) => req("/api/portal/inbox" + (uid ? `?user_id=${uid}` : ""), H),
