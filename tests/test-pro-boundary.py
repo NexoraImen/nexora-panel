@@ -124,7 +124,7 @@ def gated(r):
     session or (agents authenticate inside the endpoint) the license alone."""
     want = ("portal_login_pro_required." if r.path.startswith("/api/portal/") and r.path.endswith("/login")
             else "portal_pro_required." if r.path.startswith("/api/portal/")
-            else "requires." if r.path.startswith("/api/agent/")
+            else "requires." if r.path.startswith(("/api/agent/", "/api/sms/"))
             else "_customer_pro_gate." if r.path.startswith("/api/mini/")
             else "_partner_pro_gate." if r.path.startswith("/api/aff/") else "pro_required.")
     return any(getattr(d.call, "__qualname__", "").startswith(want)
@@ -201,9 +201,10 @@ for r in pro_routes:
             if code != 403 or not hdr.get("x-nexora-pro") or AP.PARTNER_LOCKED not in body:
                 bad.append(f"{m} {path} (partner) → {code}")
             continue
-        if path.startswith(("/api/agent/", "/api/mini/")):
-            # Agents (node token) and mini-app customers (Telegram signature)
-            # authenticate inside the endpoint, so the license answers first;
+        if path.startswith(("/api/agent/", "/api/mini/", "/api/sms/")):
+            # Agents (node token), mini-app customers (Telegram signature) and
+            # the shop's SMS forwarder (the address's token) authenticate
+            # inside the endpoint, so the license answers first;
             # nothing but the license state is exposed.
             code, _, hdr = call(path, {}, m, b"{}")
             if code != 403 or not hdr.get("x-nexora-pro"):

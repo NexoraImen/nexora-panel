@@ -3,6 +3,19 @@
 Each entry says what was broken and why, not a list of commits.
 History before 2.0 lives with the 1.x line.
 
+## [2.3.2] - 2026-10-07
+
+### The phone's SMS was refused before it reached the panel
+
+In 2.3.0 and 2.3.1 every SMS from the phone was answered "send the admin
+password" (422), which a phone cannot do, so no deposit ever arrived. The
+panel puts a gate in front of each Pro route, and that gate asks for the
+admin password everywhere except on routes that authenticate themselves.
+The SMS address authenticates with its own token but was not in that
+exception. It is now, with the license still checked. The tests had called
+the function directly and never went through the gate. A test now sends the
+phone's real request through the whole app.
+
 ## [2.3.1] - 2026-10-07
 
 ### «تأیید خودکار رسید» says what happened to every SMS

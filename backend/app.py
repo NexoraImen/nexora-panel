@@ -9681,7 +9681,11 @@ class _GatedApp:
             return portal_login_pro_required(feature)
         if path.startswith("/api/portal/"):
             return portal_pro_required(feature)
-        if path.startswith("/api/agent/"):
+        # The agent and the shop's SMS forwarder authenticate inside the
+        # endpoint (signed request / the address's own token); neither can
+        # send the admin password. With pro_required the phone's every SMS
+        # was a 422 and nothing ever arrived (2.3.0, 2026-10-07).
+        if path.startswith(("/api/agent/", "/api/sms/")):
             return LIC.requires(feature)
         if path.startswith("/api/mini/"):
             return _customer_pro_gate(feature)
