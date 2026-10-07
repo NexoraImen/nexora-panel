@@ -132,7 +132,7 @@ export function WorkspaceSwitch({ mode, workspace, onSwitch, active, setActive,
           const col = WS_COLOR[w.key] || "var(--accent-2)";
           return (
             <div key={w.key} className="mb-1">
-              <button title="باز کردن این بخش" data-navhead={w.key}
+              <button title={w.label} data-navhead={w.key}
                 onClick={() => onSwitch(w.key)}
                 className="fx-ws-head relative w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-right transition-all"
                 style={{
@@ -144,7 +144,6 @@ export function WorkspaceSwitch({ mode, workspace, onSwitch, active, setActive,
                   style={{ color: on ? "var(--text)" : "var(--dim)", fontWeight: on ? 700 : 500 }}>
                   {w.label}
                 </span>
-                <span className="fx-tip-nav">{w.label}</span>
                 <ChevronDown size={12} className="fx-gone-c" style={{
                   color: "var(--muted)", flexShrink: 0,
                   transform: on ? "rotate(180deg)" : "none",
@@ -169,7 +168,7 @@ export function WorkspaceSwitch({ mode, workspace, onSwitch, active, setActive,
                     if (!it || React.isValidElement(it)) return it || null;
                     const sel = active === it.key;
                     return (
-                      <button key={it.key} data-navkey={it.key} onClick={() => setActive(it.key)}
+                      <button key={it.key} data-navkey={it.key} title={it.label} onClick={() => setActive(it.key)}
                         aria-current={sel ? "page" : undefined}
                         className="fx-ws-item w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg mb-0.5 text-right transition-colors relative"
                         style={{
@@ -179,7 +178,6 @@ export function WorkspaceSwitch({ mode, workspace, onSwitch, active, setActive,
                         }}>
                         <it.icon size={12} style={{ flexShrink: 0 }} />
                         <span className="flex-1 text-[13px] truncate fx-lbl">{it.label}</span>
-                        <span className="fx-tip-nav">{it.label}</span>
                         <ProMark feature={it.pro} className="fx-gone-c" />
                         {it.badge && (
                           <span className="text-[10.5px] px-1.5 py-0.5 rounded-full shrink-0 fx-gone-c"
@@ -207,14 +205,14 @@ export function WorkspaceSwitch({ mode, workspace, onSwitch, active, setActive,
   /* ── نوار آیکون ── */
   if (mode === "rail") {
     return (
-      <div className="flex gap-1.5 mb-4 px-1">
+      <div className="fx-ws-rail flex gap-1.5 mb-4 px-1">
         {spaces.map((w) => {
           const on = workspace === w.key;
           const col = WS_COLOR[w.key] || "var(--accent-2)";
           return (
             <div key={w.key} className="relative flex-1"
               onMouseEnter={() => setHover(w.key)} onMouseLeave={() => setHover(null)}>
-              <button data-navhead={w.key} onClick={() => onSwitch(w.key)}
+              <button data-navhead={w.key} title={w.label} onClick={() => onSwitch(w.key)}
                 className="w-full flex items-center justify-center rounded-xl transition-all"
                 style={{
                   height: 42,
@@ -248,8 +246,8 @@ export function WorkspaceSwitch({ mode, workspace, onSwitch, active, setActive,
   const col = WS_COLOR[workspace] || "var(--accent-2)";
   return (
     <div className="relative mb-4">
-      <button onClick={() => setOpen(!open)}
-        className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-right"
+      <button onClick={() => setOpen(!open)} title={cur.label}
+        className="fx-ws-head w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-right"
         style={{
           background: "var(--surface-2)", border: "1px solid var(--border-2)",
           boxShadow: "0 1px 0 var(--hair-2) inset",
@@ -262,11 +260,11 @@ export function WorkspaceSwitch({ mode, workspace, onSwitch, active, setActive,
           }}>
           <cur.icon size={15} style={{ color: col }} />
         </div>
-        <div className="flex-1 min-w-0">
+        <div className="flex-1 min-w-0 fx-gone-c">
           <div className="text-[13px] font-bold text-white truncate">{cur.label}</div>
           <div className="text-[11px] mt-0.5" style={{ color: "var(--muted)" }}>فضای کاری</div>
         </div>
-        <ChevronDown size={14} style={{
+        <ChevronDown size={14} className="fx-gone-c" style={{
           color: "var(--muted)", flexShrink: 0,
           transform: open ? "rotate(180deg)" : "none", transition: "transform .22s",
         }} />
@@ -275,7 +273,7 @@ export function WorkspaceSwitch({ mode, workspace, onSwitch, active, setActive,
       {open && (
         <>
           <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
-          <div className="absolute z-20 left-0 right-0 rounded-2xl p-1.5 fx-scale"
+          <div className="fx-ws-pop absolute z-20 left-0 right-0 rounded-2xl p-1.5 fx-scale"
             style={{
               top: "calc(100% + 6px)",
               background: "var(--surface)", border: "1px solid var(--border-2)",

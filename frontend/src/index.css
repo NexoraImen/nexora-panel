@@ -1076,52 +1076,30 @@ code, kbd, samp, pre { overflow-wrap: anywhere; }
 .fx-rowact { opacity: 0; transition: opacity var(--m-fast) linear; }
 tr:hover .fx-rowact, tr:focus-within .fx-rowact { opacity: 1; }
 
-/* ── سایدبارِ جمع‌شونده ──
-   در حالت جمع فقط آیکون می‌ماند و نامش روی تولتیپ می‌آید. */
-body.fx-collapsed .fx-side { width: var(--side-min); padding-inline: 10px; }
-body.fx-collapsed .fx-side .fx-lbl,
-body.fx-collapsed .fx-side .fx-side-label,
-body.fx-collapsed .fx-side .fx-hide-c { opacity: 0; pointer-events: none; }
-.fx-side .fx-lbl, .fx-side .fx-side-label { transition: opacity var(--m-fast) linear; }
-.fx-tip-nav {
-  position: absolute; inset-inline-end: calc(100% + 12px); top: 50%;
-  transform: translateY(-50%) scale(.92); transform-origin: left center;
-  background: var(--surface-2); border: 1px solid var(--border-2); color: var(--text);
-  font-size: 12px; padding: 5px 11px; border-radius: 8px; white-space: nowrap;
-  opacity: 0; pointer-events: none; box-shadow: var(--e-2); z-index: 70;
-  transition: opacity var(--m-fast) linear, transform var(--m-fast) var(--sp-snappy);
-}
-body.fx-collapsed .fx-nav-item:hover .fx-tip-nav { opacity: 1; transform: translateY(-50%) scale(1); }
-body:not(.fx-collapsed) .fx-tip-nav { display: none; }
-
-/* The default menu is the accordion (shell/workspace.jsx), and the rules above
-   were written for the flat one: in the 68px rail its chevrons, group titles,
-   Pro marks and the service card kept their width, spilled out of the rail and
-   gave it a sideways scrollbar (owner's screenshot, 2.3.4). Desktop only: the
-   phone drawer is never collapsed (block below). */
+/* ── Collapsed sidebar: icons only, the name is each button's title ──
+   Desktop only; the phone drawer is always full width. Written for all three
+   menu modes (shell/workspace.jsx). Until 2.3.5 the rules knew the flat menu
+   only: the accordion spilled out of the rail, and in the dropdown mode the
+   item icons were squeezed to 0px, leaving an empty blue box. The floating
+   names (.fx-tip-nav) sat outside the rail, so the rail clipped them, and they
+   were what gave it a sideways scrollbar. */
 @media (min-width: 1024px) {
-  body.fx-collapsed .fx-side { overflow-x: hidden; }
-  body.fx-collapsed .fx-side .fx-gone-c,
-  body.fx-collapsed .fx-ws-head .fx-lbl,
-  body.fx-collapsed .fx-ws-item .fx-lbl { display: none; }
+  body.fx-collapsed .fx-side { width: var(--side-min); padding-inline: 10px; overflow-x: hidden; }
+  body.fx-collapsed .fx-side :is(.fx-lbl, .fx-side-label, .fx-hide-c, .fx-gone-c) { display: none; }
   body.fx-collapsed .fx-ws-sub { margin: 0; padding: 0; border: 0 !important; }
-  body.fx-collapsed .fx-ws-head,
-  body.fx-collapsed .fx-ws-item { justify-content: center; padding-inline: 0 !important; min-height: 36px; }
-  body.fx-collapsed :is(.fx-ws-head, .fx-ws-item):hover .fx-tip-nav { opacity: 1; transform: translateY(-50%) scale(1); }
+  body.fx-collapsed .fx-ws-rail { flex-direction: column; padding: 0; }
+  body.fx-collapsed .fx-side :is(.fx-nav-item, .fx-ws-head, .fx-ws-item) {
+    justify-content: center; padding-inline: 0 !important; min-height: 36px; }
+  body.fx-collapsed .fx-side :is(.fx-nav-item, .fx-ws-head, .fx-ws-item) > svg { flex-shrink: 0; }
+  /* the dropdown's list is wider than the rail: fixed, so the rail does not clip it */
+  body.fx-collapsed .fx-ws-pop {
+    position: fixed !important; top: auto !important; left: auto !important; right: auto !important;
+    width: 240px; margin-top: 6px; }
   /* the count does not fit: a dot on the icon's corner */
   body.fx-collapsed .fx-side .fx-nav-alert {
     position: absolute; top: 4px; inset-inline-end: 8px;
     min-width: 8px; width: 8px; height: 8px; padding: 0; font-size: 0; overflow: hidden;
   }
-}
-
-@media (max-width: 1023.98px) {
-  /* در کشو، جمع‌بودن معنا ندارد — همیشه کامل باز است */
-  body.fx-collapsed .fx-side { width: 262px; padding-inline: 14px; }
-  body.fx-collapsed .fx-side .fx-lbl,
-  body.fx-collapsed .fx-side .fx-side-label,
-  body.fx-collapsed .fx-side .fx-hide-c { opacity: 1; pointer-events: auto; }
-  body.fx-collapsed .fx-tip-nav { display: none; }
 }
 
 /* ── کم‌کردنِ حرکت: هم تنظیمِ سیستم، هم کلیدِ خودِ پنل ── */

@@ -3,6 +3,31 @@
 Each entry says what was broken and why, not a list of commits.
 History before 2.0 lives with the 1.x line.
 
+## [2.3.5] - 2026-10-07
+
+### The collapsed menu, in every menu mode
+
+2.3.4 fixed the collapsed rail for the default menu (accordion) only. The
+owner uses «کشویی» (dropdown), and there the item icons were squeezed to 0px:
+the rail showed the workspace box and an empty blue box (the active item with
+no icon). The rules are now written once for all three modes (accordion,
+dropdown, icon rail), and each mode was measured in the harness: every icon
+16px wide, nothing outside the rail, no sideways scroll. In the dropdown mode
+the workspace list opens beside the rail instead of being cut by it.
+
+The floating names in the collapsed rail never showed: they sat outside the
+rail, which clipped them, and they were what gave it a sideways scrollbar. Each
+button now carries its name as a title.
+
+### «پیامک‌هایی که به پنل رسید»: columns, pages, no repeated sender
+
+Each row was a flex line with space between, so the time moved with the length
+of the text beside it and the columns never lined up. A row is now a grid:
+three fixed columns from 640px, two lines on a phone. Both lists (SMS and
+deposits) have numbered pages of 10. The panel keeps the last 30 SMS (it
+showed only 15). The result no longer repeats the sender («از «+98…»: واریز
+نیست»): the sender has its own column.
+
 ## [2.3.4] - 2026-10-07
 
 ### «تأیید خودکار رسید»: the QR sets up the phone app by itself, and every SMS is signed

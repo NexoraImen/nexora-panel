@@ -381,7 +381,7 @@ export default function App() {
               <nav className="flex flex-col gap-1 relative">
                 <NavIndicator activeKey={active} />
                 {items.map((n) => (
-                  <button key={n.key} data-navkey={n.key}
+                  <button key={n.key} data-navkey={n.key} title={n.label}
                     className={`fx-nav-item ${active === n.key ? "on" : ""}`}
                     onClick={() => navigate(n.key)} disabled={!!n.badge}
                     style={n.badge ? { opacity: 0.55, cursor: "not-allowed" } : {}}>
@@ -401,8 +401,6 @@ export default function App() {
                         سفارش‌ها باز شود — یعنی مشتری پول داده و
                         منتظر مانده بدون اینکه کسی خبر داشته باشد. */}
                     {!n.badge && n.alert && <NavAlert count={alerts[n.alert]} />}
-                    {/* در حالت جمع، نامِ آیتم فقط روی تولتیپ می‌ماند */}
-                    <span className="fx-tip-nav">{n.label}</span>
                   </button>
                 ))}
               </nav>
@@ -418,8 +416,8 @@ export default function App() {
             </div>
             <div className="text-[12px]" style={{ color: "var(--muted)" }} dir="ltr">t.me/{config.links?.channelUsername}</div>
           </div>
-          <button onClick={logout} className="fx-nav-item">
-            <LogOut size={15} /> <span className="fx-lbl">خروج</span><span className="fx-tip-nav">خروج</span>
+          <button onClick={logout} className="fx-nav-item" title="خروج">
+            <LogOut size={15} /> <span className="fx-lbl">خروج</span>
           </button>
         </div>
       </aside>
