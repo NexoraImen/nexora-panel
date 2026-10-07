@@ -10456,6 +10456,67 @@
   // the route's own keys. Realistic on purpose: a flood on the Iran IP, a
   // tunnel on wssmux, a GRE device by hand, and 3x-ui without an Iran rule.
   // The old server («مشهد», agent 1.5.2) answers "no split yet".
+  // «تأیید خودکار رسید» — stateful like the backend (`_sms_view`), so trust,
+  // «not my bank» and «this was a deposit» can be clicked through
+  var SMS = null;
+  function SMSPAY(u, b) {
+    var norm = function (x) { return String(x || "").toLowerCase().replace(/[^0-9a-z\u0600-\u06ff]/g, ""); };
+    var personal = function (x) { return /^(98|0)?9\d{9}$/.test(norm(x)); };
+    if (!SMS) {
+      SMS = { senders: ["Blu"], dismissed: [], nextDep: 15, inbox: [
+        { id: 40, sender: "Mellat", outcome: "واریز از فرستنده‌ای که هنوز تأیید نشده", at: "2026-10-07 08:50:00",
+          untrusted: 1, amount: 1000, body: "بانک ملت\nواریز 10,000ریال به حساب شما نشست", deposit_id: null },
+        { id: 39, sender: "Blu", outcome: "واریزِ ۲۸۰٬۰۰۰ تومان ثبت شد", at: "2026-10-07 08:42:10",
+          untrusted: 0, amount: 280000, body: null, deposit_id: 14 },
+        { id: 38, sender: "+989999123456", outcome: "واریز نیست", at: "2026-10-07 08:31:00", untrusted: 0,
+          amount: null, body: "بانک ملت\nانتقال وجه\nمبلغ: 1,500,000\n1405/07/15 12:01", deposit_id: null },
+        { id: 37, sender: "Blu", outcome: "برداشت است، نه واریز", at: "2026-10-07 08:20:00", untrusted: 0,
+          amount: null, body: "برداشت 500,000ریال", deposit_id: null },
+        { id: 36, sender: "+989121234567", outcome: "واریز از فرستنده‌ای که هنوز تأیید نشده",
+          at: "2026-10-07 08:47:00", untrusted: 1, amount: 280000,
+          body: "واریز 2,800,000ریال به حساب شما نشست", deposit_id: null }]
+        // a phone that forwards everything (the owner's, 2.3.4): a long list,
+        // mobile numbers and an operator name, so the rows and pages are seen
+        .concat([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13].map(function (i) {
+          return { id: 35 - i, sender: i % 5 === 0 ? "MCI Modem" : (i % 3 ? "+989151234567" : "+989051234567"),
+            outcome: i === 4 ? "امضای پیامک نادرست بود؛ رد شد" : "واریز نیست",
+            at: "2026-10-07 0" + (7 - (i >> 2)) + ":" + (50 - i * 3) + ":00", untrusted: 0, amount: null,
+            body: i === 4 ? null : "کد تأیید شما: 4" + (1000 + i), deposit_id: null }; })),
+        deposits: [
+          { id: 14, amount: 280000, paid_at: "2026-10-07 08:42:00", order_id: 4102, state: "matched" },
+          { id: 13, amount: 150000, paid_at: "2026-10-07 08:31:00", order_id: null, state: "new" },
+          { id: 12, amount: 990000, paid_at: "2026-10-07 07:05:00", order_id: null, state: "unmatched" },
+          { id: 11, amount: 280000, paid_at: "2026-10-06 18:40:00", order_id: 4097, state: "manual" },
+          { id: 10, amount: 420000, paid_at: "2026-10-06 16:12:00", order_id: 4093, state: "matched" }] };
+    }
+    var trust = function (x) {
+      if (SMS.senders.map(norm).indexOf(norm(x)) < 0) SMS.senders.push(x);
+      SMS.dismissed = SMS.dismissed.filter(function (y) { return norm(y) !== norm(x); });
+    };
+    if (u.indexOf("/smspay/trust") >= 0) trust(b.sender);
+    if (u.indexOf("/smspay/dismiss") >= 0) SMS.dismissed.unshift(b.sender);
+    if (u.indexOf("/smspay/record") >= 0) {
+      var row = SMS.inbox.filter(function (x) { return x.id === b.id; })[0];
+      if (b.trust) trust(row.sender);
+      var dep = SMS.nextDep++;
+      SMS.deposits.unshift({ id: dep, amount: b.amount, paid_at: row.at, order_id: null, state: "new" });
+      row.deposit_id = dep; row.body = null;
+      row.outcome = "واریزِ " + Number(b.amount).toLocaleString("fa-IR") + " تومان — شما ثبت کردید";
+    }
+    var tr = SMS.senders.map(norm), seen = SMS.dismissed.map(norm), suggest = [];
+    var inbox = SMS.inbox.map(function (x) {
+      var n = norm(x.sender);
+      if (x.untrusted && tr.indexOf(n) < 0 && seen.indexOf(n) < 0) {
+        seen.push(n);
+        suggest.push({ sender: x.sender, amount: x.amount, at: x.at, personal: personal(x.sender) });
+      }
+      return Object.assign({}, x, { personal: personal(x.sender), trusted: tr.indexOf(n) >= 0 });
+    });
+    return { enabled: true, token: "hX3k9Qm2Lr8Vt5Wn1Pz7Yc4Bd6Fg0Js2Ka9Me3Ru5To",
+      path: "/api/sms/hX3k9Qm2Lr8Vt5Wn1Pz7Yc4Bd6Fg0Js2Ka9Me3Ru5To", senders: SMS.senders.slice(), signed: true,
+      suggest: suggest, inbox: inbox, deposits: SMS.deposits.slice(), dismissed: SMS.dismissed.slice() };
+  }
+
   // «هزینه و درآمد»: what the owner entered, kept while the page is open
   var COSTS = { 1: { gbPrice: 250, mode: "both" } };
   function TRAFFIC_MONEY(k, iran) {
@@ -11800,29 +11861,7 @@ var D_CODES = { ready: true,
     if (u.indexOf("/bot/smspay/qr") >= 0) return { __blob: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAKwAAACsAQAAAADOSnp1AAABcElEQVR42u1XUYpDQQwKvYD3v2Vu4Kpp6X70p+Df7lAo8wpO6qjJG35aO3/78c4M9Sv0BWy2+5iP67vHwtEJ3MUiJ9y2hb2jj6tWycy2i60FkNr3sQXLgeC3ix0eRrSIcQM3+Q4R79XUSaQYUjCRivc9vsV1LtSUn1hadcOYq6oFLmRX38Me6w8hXQcBRV8Ky9LGqaWqkwuUDfPnz6JORARMhJXiDdH0jm/PQoGZ8b0WObGqkyRRZFHfucWU/hT7FuvGq2hY2mCVb1jY6Q/cJzM1vlXvZbjKZ04r3mX4YNiO84vYy/jF3hcuUcwTO32SV24Q+i7yLTsGdS6/m3yvrXiTimNrI5deb3Cyxu1g2n1R3+ccj1Vmvcn3xaDnByTJq72BE1e+msMU+b6RM+0Yp/PufMI4x2Eb65fnKvebiEansDzH5g+4+mp+36yZXpZg2fb8DQfKGp1k+b0hEegDynXPqXqvLdubVX3/v1/+fvwDrtUAkHdNh3IAAAAASUVORK5CYII=" };
     if (u.indexOf("/bot/smspay/test") >= 0)
       return { deposit: true, amount: 1000000, paid_at: "2026-10-06 09:21:00", time_from: "sms", why: "" };
-    if (u.indexOf("/bot/smspay") >= 0) return {
-      enabled: true, token: "hX3k9Qm2Lr8Vt5Wn1Pz7Yc4Bd6Fg0Js2Ka9Me3Ru5To",
-      path: "/api/sms/hX3k9Qm2Lr8Vt5Wn1Pz7Yc4Bd6Fg0Js2Ka9Me3Ru5To", senders: ["Blu"], signed: true,
-      suggest: [
-        { sender: "Mellat", amount: 1000, at: "2026-10-07 08:50:00", personal: false },
-        { sender: "+989121234567", amount: 280000, at: "2026-10-07 08:47:00", personal: true } ],
-      inbox: [
-        { sender: "Mellat", outcome: "واریز از فرستنده‌ای که هنوز تأیید نشده", at: "2026-10-07 08:50:00", untrusted: 1, amount: 1000 },
-        { sender: "Blu", outcome: "واریزِ ۲۸۰٬۰۰۰ تومان ثبت شد", at: "2026-10-07 08:42:10", untrusted: 0, amount: 280000 },
-        { sender: "Blu", outcome: "برداشت است، نه واریز", at: "2026-10-07 08:20:00", untrusted: 0, amount: null },
-        { sender: "+989121234567", outcome: "واریز از فرستنده‌ای که هنوز تأیید نشده", at: "2026-10-07 08:47:00", untrusted: 1, amount: 280000 } ]
-        // a phone that forwards everything (the owner's, 2.3.4): a long list,
-        // mobile numbers and an operator name, so the rows and pages are seen
-        .concat([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13].map(function (i) {
-          return { sender: i % 5 === 0 ? "MCI Modem" : (i % 3 ? "+989151234567" : "+989051234567"),
-            outcome: i === 4 ? "امضای پیامک نادرست بود؛ رد شد" : "واریز نیست",
-            at: "2026-10-07 0" + (7 - (i >> 2)) + ":" + (50 - i * 3) + ":00", untrusted: 0, amount: null }; })),
-      deposits: [
-        { id: 14, amount: 280000, paid_at: "2026-10-07 08:42:00", order_id: 4102, state: "matched" },
-        { id: 13, amount: 150000, paid_at: "2026-10-07 08:31:00", order_id: null, state: "new" },
-        { id: 12, amount: 990000, paid_at: "2026-10-07 07:05:00", order_id: null, state: "unmatched" },
-        { id: 11, amount: 280000, paid_at: "2026-10-06 18:40:00", order_id: 4097, state: "manual" },
-        { id: 10, amount: 420000, paid_at: "2026-10-06 16:12:00", order_id: 4093, state: "matched" } ] };
+    if (u.indexOf("/bot/smspay") >= 0) return SMSPAY(u, body || {});
     if (u.indexOf("/bot/users/report") >= 0) return REPORT;
     // بکند با ?status= فیلتر می‌کند؛ بدونِ این، زبانه‌ی «در انتظار» سفارشِ
     // تاییدشده و ردشده هم نشان می‌داد و شبیهِ باگِ پنل بود

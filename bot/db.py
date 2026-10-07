@@ -628,7 +628,10 @@ def _migrate(con):
         )""")
         # 2.3.3: a deposit from a sender not yet trusted, offered for one tap
         lcols = [r[1] for r in con.execute("PRAGMA table_info(sms_log)")]
-        for col in ("untrusted INTEGER DEFAULT 0", "amount INTEGER"):
+        # 2.3.7: the text (balance lines removed) of an SMS the panel did not
+        # register, so the owner can say «this was a deposit», and the deposit
+        # it was then recorded as
+        for col in ("untrusted INTEGER DEFAULT 0", "amount INTEGER", "body TEXT", "deposit_id INTEGER"):
             if col.split()[0] not in lcols:
                 con.execute(f"ALTER TABLE sms_log ADD COLUMN {col}")
     except sqlite3.Error as _exc:

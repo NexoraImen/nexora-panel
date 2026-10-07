@@ -3,6 +3,29 @@
 Each entry says what was broken and why, not a list of commits.
 History before 2.0 lives with the 1.x line.
 
+## [2.3.7] - 2026-10-07
+
+### «تأیید خودکار رسید»: real deposits marked fake, and a crowded page
+
+The owner saw real deposits listed as «واریز نیست» or as a possibly fake
+number, with no way to say otherwise.
+
+- **A bank that texts from a mobile-looking line** (98999…) could never be
+  trusted. 2.3.3 refused every such number, because anyone can text a fake
+  «واریز» from their own phone. It can now be trusted with a second, explicit
+  yes. From then on it counts like any bank.
+- **A deposit the panel cannot read** (other words, no ریال/تومان) was a
+  dead end. The text is now kept for SMS the panel did not register, without
+  the balance lines. The row has «این واریز بود»: confirm the amount and,
+  if you want, «always accept this sender». It is recorded at the SMS's time
+  and paired with a waiting order like any other. When the text has a bare
+  number, two buttons offer it as rial or as toman, so a tenfold slip is not
+  made by typing. One SMS makes one deposit, however often the button is
+  pressed.
+- **«نه، دیگر نپرس»** stops the question about a sender that is not your bank.
+- **Folding:** setup (folded by itself once done), the SMS list and the
+  deposits can be folded; the page remembers how you left them.
+
 ## [2.3.6] - 2026-10-07
 
 ### «چرا این‌قدر؟»: what the traffic costs, who uses it, who pays for it
