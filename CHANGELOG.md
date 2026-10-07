@@ -3,6 +3,38 @@
 Each entry says what was broken and why, not a list of commits.
 History before 2.0 lives with the 1.x line.
 
+## [2.3.6] - 2026-10-07
+
+### «چرا این‌قدر؟»: what the traffic costs, who uses it, who pays for it
+
+The owner: "based on the cost I am losing money, and I do not know where the
+problem is." The page from 2.2.1 could only say whether the network wastes
+bytes: tunnel overhead, a flood on the IP, resends. It could not say whether
+the traffic is paid for. A healthy tunnel still loses money when a few
+unlimited or flat-price customers use most of it. Three things are new under
+«تانل» → «حجمِ ترافیک» → «چرا این‌قدر؟»:
+
+- **Cost.** For each server, the price per GB from the datacenter's invoice
+  and what it bills (in + out, out only, or in only). The page then shows the
+  window's cost and what each GB a customer uses costs, with both servers
+  and the tunnel's overhead included. A price that is not entered is shown as
+  missing, never guessed.
+- **Who pays.** Each customer's usage is classed by the invoice's own rules:
+  per GB, flat rate, the owner's bot, free trial, or on no bill. For each
+  class the page shows its cost and what you get for it.
+- **Top customers.** The ten biggest users in the window, with group, how
+  they pay, whether they are unlimited, and how many IPs 3x-ui saw.
+
+New findings, each with a fix: a per-GB reseller paying less than a GB
+costs (with the loss in toman), the bot's sales not covering its customers'
+traffic over 30 days, unlimited configs over 20% of usage, traffic on no bill
+over 15%, flat-price groups over 25%, ten customers over half of all usage,
+and anyone over 30 GB a day. A money loss becomes the page's verdict.
+
+3x-ui keeps only a running total per customer, so the panel now records
+each customer's usage by day (kept 90 days). "Who used it" fills in from the
+update onwards, and the page says how much of the window it covers.
+
 ## [2.3.5] - 2026-10-07
 
 ### The collapsed menu, in every menu mode

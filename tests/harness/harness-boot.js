@@ -10456,6 +10456,51 @@
   // the route's own keys. Realistic on purpose: a flood on the Iran IP, a
   // tunnel on wssmux, a GRE device by hand, and 3x-ui without an Iran rule.
   // The old server («مشهد», agent 1.5.2) answers "no split yet".
+  // «هزینه و درآمد»: what the owner entered, kept while the page is open
+  var COSTS = { 1: { gbPrice: 250, mode: "both" } };
+  function TRAFFIC_MONEY(k, iran) {
+    var GB = 1073741824, C = 122.4 * GB * k;
+    var line = function (id, label, role, rx, tx) {
+      var c = COSTS[id] || {}, mode = c.mode || "both";
+      var billed = mode === "out" ? tx : mode === "in" ? rx : rx + tx;
+      return { id: id, label: label, role: role, mode: mode,
+        modeLabel: { both: "ورودی + خروجی", out: "فقط خروجی", "in": "فقط ورودی" }[mode],
+        gbPrice: c.gbPrice || null, billed: billed, cost: c.gbPrice ? Math.round(billed / GB * c.gbPrice) : null };
+    };
+    var lines = [line(1, "تهران-۱", "iran", Math.round(iran * 0.55), Math.round(iran * 0.45)),
+                 line(0, "سرورِ پنل", "foreign", Math.round(142 * GB * k), Math.round(139 * GB * k))];
+    var missing = lines.filter(function (l) { return l.cost == null; }).map(function (l) { return l.label; });
+    var total = missing.length ? null : lines.reduce(function (a, l) { return a + l.cost; }, 0);
+    var per = total ? Math.round(total / (C / GB)) : null;
+    var cls = [["gb", "حجمی (هر گیگ پول می‌گیرید)", 0.40, 900], ["fixed", "قیمتِ ثابت (مصرف حساب نمی‌شود)", 0.25, null],
+               ["bot", "فروشِ رباتِ خودتان", 0.20, null], ["none", "در هیچ صورتحسابی نیست", 0.10, 0],
+               ["trial", "تستِ رایگان", 0.05, 0]].map(function (c) {
+      var b = Math.round(C * c[2]);
+      return { cls: c[0], label: c[1], bytes: b, share: c[2], cost: per ? Math.round(b / GB * per) : null,
+               income: c[3] == null ? null : Math.round(b / GB * c[3]) };
+    });
+    return { lines: lines, totalCost: total, missing: missing, perGbCost: per, customerBytes: Math.round(C),
+             classes: cls, botSale: { amount: 4200000, orders: 31 } };
+  }
+  function TRAFFIC_WHO(k) {
+    var GB = 1073741824;
+    var R = [["sajjad-unl-07", 41.2, "fixed", "قیمتِ ثابت (مصرف حساب نمی‌شود)", "sajjad", true, 5],
+             ["pelle-0193", 32.0, "gb", "حجمی (هر گیگ پول می‌گیرید)", "Pelleaval", false, 1],
+             ["user_58213", 9.4, "bot", "فروشِ رباتِ خودتان", "", false, 2],
+             ["a-very-long-customer-email-from-a-reseller-0001@shop", 7.7, "none", "در هیچ صورتحسابی نیست", "free", true, 3],
+             ["yaser-221", 6.1, "gb", "حجمی (هر گیگ پول می‌گیرید)", "yaser", false, 1],
+             ["user_58810", 4.9, "bot", "فروشِ رباتِ خودتان", "", false, 1],
+             ["dastani-12", 3.8, "fixed", "قیمتِ ثابت (مصرف حساب نمی‌شود)", "dastani", true, 1],
+             ["trial_9921", 2.2, "trial", "تستِ رایگان", "", false, 1],
+             ["user_57001", 1.9, "bot", "فروشِ رباتِ خودتان", "", false, 1],
+             ["yaser-090", 1.5, "gb", "حجمی (هر گیگ پول می‌گیرید)", "yaser", false, 1]];
+    var total = 122.4 * GB * k;
+    return { total: Math.round(total), clients: 184, coverage: k > 1 ? 0.41 : 1,
+      rows: R.map(function (r) { var b = Math.round(r[1] * GB * k);
+        return { email: r[0], bytes: b, share: b / total, cls: r[2], clsLabel: r[3], group: r[4],
+                 groupLabel: r[4], unlimited: r[5], ips: r[6], perGb: r[2] === "gb" ? 900 : null }; }) };
+  }
+
   function TRAFFIC_WHY(u) {
     var GB = 1073741824, days = +((u.match(/days=(\d+)/) || [])[1] || 1);
     var old = /node=2\b/.test(u), k = days === 1 ? 1 : days === 7 ? 6.6 : 27;
@@ -10487,6 +10532,17 @@
       level: "bad", title: "۱۵٪ از ترافیکِ سرورِ ایران مالِ تانل نیست",
       text: "۴۴٫۸ گیگ (۱۵٪) از ترافیکِ این سرور نه مالِ مشتری‌هاست و نه مالِ تانل به سرورِ خارج. بیشترش ورودی است: اسکن یا حمله‌ی حجمی (DDoS) به آی‌پیِ سرور. دیتاسنتر همین را هم حساب می‌کند، حتی وقتی سرور جوابش را نمی‌دهد.",
       findings: [
+        { id: "loss-gb", level: "bad", title: "نرخِ حجمیِ بعضی واسطه‌ها از هزینه‌ی هر گیگ کمتر است",
+          why: "هر گیگ مصرفِ مشتری، با هزینه‌ی دو سرور، حدودِ ۱٬۰۸۰ تومان برایتان تمام می‌شود. این گروه‌ها کمتر از این پول می‌دهند، پس با هر گیگ ضرر می‌کنید.",
+          fix: "نرخِ این گروه‌ها را در «واسطه‌ها و نرخ» بالاتر از هزینه ببرید، یا سربارِ تانل را کم کنید تا هزینه‌ی هر گیگ پایین بیاید.",
+          items: ["yaser: نرخ ۹۰۰، ضرر حدودِ ۸٬۸۰۰ تومان در این بازه"] },
+        { id: "who-unlimited", level: "warn", title: "کانفیگ‌های نامحدود ۳۱٪ از مصرف را برده‌اند",
+          why: "۳۸٫۰ گیگ (حدودِ ۴۱٬۰۰۰ تومان هزینه) مالِ کانفیگ‌هایی است که سقفِ حجم ندارند.",
+          fix: "به کانفیگ‌های نامحدود سقفِ حجمِ منصفانه بدهید و محدودیتِ IP بگذارید.", items: [] },
+        { id: "who-heavy", level: "warn", title: "۲ مشتری روزی بیش از ۳۰ گیگ مصرف می‌کند",
+          why: "مصرفِ عادیِ یک نفر روزی چند گیگ است.",
+          fix: "در 3x-ui برایش «محدودیتِ IP» بگذارید.",
+          items: ["⁦sajjad-unl-07⁩: ۴۱٫۲ گیگ در روز، ۵ IP", "⁦pelle-0193⁩: ۳۲٫۰ گیگ در روز"] },
         { id: "other", level: "bad", title: "۱۵٪ از ترافیکِ سرورِ ایران مالِ تانل نیست",
           why: "۴۴٫۸ گیگ (۱۵٪) از ترافیکِ این سرور نه مالِ مشتری‌هاست و نه مالِ تانل به سرورِ خارج. بیشترش ورودی است: اسکن یا حمله‌ی حجمی (DDoS) به آی‌پیِ سرور. دیتاسنتر همین را هم حساب می‌کند، حتی وقتی سرور جوابش را نمی‌دهد.",
           fix: "در «فایروال»ِ سرورِ ایران فقط پورت‌های تانل و SSH را باز بگذارید و از دیتاسنتر فیلترِ ضدِ DDoS بخواهید. اگر حمله ادامه دارد، عوض‌کردنِ آی‌پی ارزان‌ترین راه است.",
@@ -10516,6 +10572,7 @@
       numbers: { iran: iran, foreign: Math.round(281 * GB * k), customers: Math.round(122.4 * GB * k),
                  parts: parts, unaccounted: Math.round(6.3 * GB * k) },
       metering: metering, node: node, days: days, since: sinceIso, feeds: 1, hasSplit: true,
+      who: TRAFFIC_WHO(k), money: TRAFFIC_MONEY(k, iran),
       peers: ["203.0.113.9"], ports: [443, 2053, 8443],
       ifaces: [{ name: "eth0", kind: "physical", rx: 9e12, tx: 8e12 },
                { name: "gre1", kind: "tunnel", rx: 2e12, tx: 2e12 }] };
@@ -11788,6 +11845,11 @@ var D_CODES = { ready: true,
     }
     if (u.indexOf("/admin/inbounds/doctor") >= 0) return INB_DOC();
     if (u.indexOf("/admin/link/diag") >= 0) return LINK_DIAG;
+    if (u.indexOf("/admin/traffic/cost") >= 0) {
+      var cb = body || {};
+      COSTS[cb.server] = { gbPrice: Number(cb.gbPrice) || 0, mode: cb.mode || "both" };
+      return { ok: true, costs: COSTS };
+    }
     if (u.indexOf("/admin/traffic/why") >= 0) return TRAFFIC_WHY(u);
     if (u.indexOf("/admin/traffic") >= 0) return TRAFFIC;
     if (u.indexOf("/admin/store-addon") >= 0 || u.indexOf("/admin/portal-addon") >= 0) {
