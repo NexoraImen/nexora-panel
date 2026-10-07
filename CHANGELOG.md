@@ -3,6 +3,20 @@
 Each entry says what was broken and why, not a list of commits.
 History before 2.0 lives with the 1.x line.
 
+## [2.3.1] - 2026-10-07
+
+### «تأیید خودکار رسید» says what happened to every SMS
+
+The owner set it up, made a test deposit, and saw nothing: no deposit and no
+reason why. An SMS the panel ignored (a sender not on the list, a withdrawal,
+an amount it could not read) was dropped without a word, so "the phone never
+sent it" and "the panel threw it away" looked the same. The page now lists
+every SMS that reached the panel with what became of it, naming the sender
+when it is the reason. When the list is empty, it says nothing reached the
+panel and shows the four things on the phone that cause that: the address
+opened in the phone's browser, the exact sender name, the SMS permission,
+and battery optimisation.
+
 ## [2.3.0] - 2026-10-07
 
 ### Card receipts approved by the bank's own SMS

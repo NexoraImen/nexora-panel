@@ -616,6 +616,16 @@ def _migrate(con):
         )""")
         con.execute("CREATE INDEX IF NOT EXISTS idx_dep_open "
                     "ON bank_deposits(tenant_id, state, amount)")
+        # Every SMS that reached the shop's address and what became of it,
+        # ignored ones too. Without it a sender that did not match was
+        # silent: the owner set it up, paid, and saw nothing (2026-10-07).
+        con.execute("""CREATE TABLE IF NOT EXISTS sms_log (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            tenant_id  INTEGER NOT NULL,
+            sender     TEXT,
+            outcome    TEXT,
+            at         TEXT DEFAULT CURRENT_TIMESTAMP
+        )""")
     except sqlite3.Error as _exc:
         log.warning("db migration/setup (bank_deposits): %s", _exc)
 

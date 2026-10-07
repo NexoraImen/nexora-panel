@@ -11744,6 +11744,10 @@ var D_CODES = { ready: true,
     if (u.indexOf("/bot/smspay") >= 0) return {
       enabled: true, token: "hX3k9Qm2Lr8Vt5Wn1Pz7Yc4Bd6Fg0Js2Ka9Me3Ru5To",
       path: "/api/sms/hX3k9Qm2Lr8Vt5Wn1Pz7Yc4Bd6Fg0Js2Ka9Me3Ru5To", senders: ["Blu"],
+      inbox: [
+        { sender: "Blu", outcome: "واریزِ ۲۸۰٬۰۰۰ تومان ثبت شد", at: "2026-10-07 08:42:10" },
+        { sender: "Blu", outcome: "برداشت است، نه واریز", at: "2026-10-07 08:20:00" },
+        { sender: "+9890001", outcome: "فرستنده «+9890001» در فهرستِ فرستنده‌ها نیست", at: "2026-10-07 07:58:30" } ],
       deposits: [
         { id: 14, amount: 280000, paid_at: "2026-10-07 08:42:00", order_id: 4102, state: "matched" },
         { id: 13, amount: 150000, paid_at: "2026-10-07 08:31:00", order_id: null, state: "new" },
