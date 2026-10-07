@@ -3,6 +3,53 @@
 Each entry says what was broken and why, not a list of commits.
 History before 2.0 lives with the 1.x line.
 
+## [2.3.4] - 2026-10-07
+
+### «تأیید خودکار رسید»: the QR sets up the phone app by itself, and every SMS is signed
+
+In 2.3.3 the QR opened a page with the address, and the owner still had to
+paste it into SMS to URL Forwarder and pick the right options by hand. The app
+has no link or QR import; it does have Settings → Import of its own rules
+file. So now:
+
+1. the QR opens a setup page (a 30-minute code, not the permanent address)
+   with one button that downloads `nexora-sms.json`;
+2. in the app: ⋮ → Settings → Import → that file. Nothing is typed.
+
+The file is the app's own backup format, checked key by key and type by type
+against the app's source code: the panel's address, the app's default
+template, and three things a hand setup always missed:
+
+- **Signed SMS.** The app signs each body with HMAC-SHA256. Once one signed SMS
+  has arrived, an unsigned one or a wrong signature is refused (401) and shown
+  on the page with the reason. Before this, the address alone was enough to
+  post a deposit, and the address sits in every proxy log on the way.
+- **Only deposit SMS leave the phone.** A text filter (واریز / نشست / به حساب
+  شما) keeps one-time codes and personal messages on the phone.
+- **Failed sends are kept and retried.** If the server is down for an hour,
+  a payment is not lost.
+
+A fixed rule key means importing twice replaces the rule instead of adding a
+second one that would send every SMS twice. «آدرس تازه» also makes a new
+secret, so a lost phone stops counting.
+
+### The collapsed menu spilled out of its rail
+
+The layers button at the top («جمع کردن منو») shrank the menu to a 68px rail,
+but the collapse rules were written for the old flat menu, and the default
+menu is now the accordion. Its arrows, group titles and Pro marks, and the
+«سرویس فعال» card, kept their width. They spilled out of the rail and gave it
+a sideways scrollbar. The rule meant to turn alert counts into dots had never
+matched anything (`.fx-side.collapsed`; the class is on `body`). The rail now
+shows icons only, with a name on hover and a dot for alerts. The phone drawer
+is unchanged.
+
+### Buttons on phones were 32px even where the page asked for 44
+
+The phone rule that gives every button at least 32px sat after Tailwind in the
+stylesheet. It won over every page's own `min-h-[44px]`. It is now a floor
+(`:where()`), so the larger size a page asks for applies.
+
 ## [2.3.3] - 2026-10-07
 
 ### «تأیید خودکار رسید»: set up in three steps, and three holes closed

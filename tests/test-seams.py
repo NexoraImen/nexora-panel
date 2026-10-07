@@ -626,6 +626,9 @@ KNOWN_PUBLIC = {
     # 32 random bytes per shop, a wrong one is a 404, and all it can do is
     # store a deposit that still needs a matching receipt.
     "/api/sms/{token}",
+    # What the panel's QR opens on the phone, and the forwarder's settings
+    # file: a 16-byte code that lives 30 minutes, made only from the admin page.
+    "/api/sms/setup/{code}", "/api/sms/setup/{code}/nexora-sms.json",
 }
 
 # بقیه‌ی مسیرهای نماینده یک دسته‌اند و تستِ اختصاصیِ پایین تضمین

@@ -134,17 +134,18 @@ export function WorkspaceSwitch({ mode, workspace, onSwitch, active, setActive,
             <div key={w.key} className="mb-1">
               <button title="باز کردن این بخش" data-navhead={w.key}
                 onClick={() => onSwitch(w.key)}
-                className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-right transition-all"
+                className="fx-ws-head relative w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-right transition-all"
                 style={{
                   background: on ? `color-mix(in srgb, ${col} 10%, transparent)` : "transparent",
                   border: `1px solid ${on ? `color-mix(in srgb, ${col} 22%, transparent)` : "transparent"}`,
                 }}>
                 <w.icon size={15} style={{ color: on ? col : "var(--muted)", flexShrink: 0 }} />
-                <span className="flex-1 text-[13px] truncate"
+                <span className="flex-1 text-[13px] truncate fx-lbl"
                   style={{ color: on ? "var(--text)" : "var(--dim)", fontWeight: on ? 700 : 500 }}>
                   {w.label}
                 </span>
-                <ChevronDown size={12} style={{
+                <span className="fx-tip-nav">{w.label}</span>
+                <ChevronDown size={12} className="fx-gone-c" style={{
                   color: "var(--muted)", flexShrink: 0,
                   transform: on ? "rotate(180deg)" : "none",
                   transition: "transform .25s cubic-bezier(.22,1,.36,1)",
@@ -152,7 +153,7 @@ export function WorkspaceSwitch({ mode, workspace, onSwitch, active, setActive,
               </button>
 
               {on && (
-                <div className="mt-1 pr-2.5 mr-4 relative"
+                <div className="fx-ws-sub mt-1 pr-2.5 mr-4 relative"
                   style={{ borderRight: `1px solid color-mix(in srgb, ${col} 22%, transparent)` }}>
                   <NavIndicator activeKey={active} />
                   {/* برچسبِ گروه فقط وقتی بیش از یک گروه هست. تا ۱.۱۲۲ گروه‌ها
@@ -160,7 +161,7 @@ export function WorkspaceSwitch({ mode, workspace, onSwitch, active, setActive,
                       بی‌هیچ دسته‌ای بود — چشم باید همه را می‌خواند. */}
                   {w.groups.flatMap((g, gi) => [
                     w.groups.length > 1 && (
-                      <div key={`g${gi}`} className="fx-nav-group">{g.title}</div>
+                      <div key={`g${gi}`} className="fx-nav-group fx-gone-c">{g.title}</div>
                     ),
                     ...g.items.map((it) => ({ ...it, _g: gi })),
                   ]).map((it) => {
@@ -170,17 +171,18 @@ export function WorkspaceSwitch({ mode, workspace, onSwitch, active, setActive,
                     return (
                       <button key={it.key} data-navkey={it.key} onClick={() => setActive(it.key)}
                         aria-current={sel ? "page" : undefined}
-                        className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg mb-0.5 text-right transition-colors relative"
+                        className="fx-ws-item w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg mb-0.5 text-right transition-colors relative"
                         style={{
                           background: "transparent",
                           color: sel ? "var(--text)" : "var(--muted)",
                           fontWeight: sel ? 600 : 400,
                         }}>
                         <it.icon size={12} style={{ flexShrink: 0 }} />
-                        <span className="flex-1 text-[13px] truncate">{it.label}</span>
-                        <ProMark feature={it.pro} />
+                        <span className="flex-1 text-[13px] truncate fx-lbl">{it.label}</span>
+                        <span className="fx-tip-nav">{it.label}</span>
+                        <ProMark feature={it.pro} className="fx-gone-c" />
                         {it.badge && (
-                          <span className="text-[10.5px] px-1.5 py-0.5 rounded-full shrink-0"
+                          <span className="text-[10.5px] px-1.5 py-0.5 rounded-full shrink-0 fx-gone-c"
                             style={{ background: "var(--hair-2)", color: "var(--muted)" }}>
                             {it.badge}
                           </span>

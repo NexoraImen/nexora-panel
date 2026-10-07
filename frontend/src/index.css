@@ -1094,6 +1094,27 @@ body.fx-collapsed .fx-side .fx-hide-c { opacity: 0; pointer-events: none; }
 body.fx-collapsed .fx-nav-item:hover .fx-tip-nav { opacity: 1; transform: translateY(-50%) scale(1); }
 body:not(.fx-collapsed) .fx-tip-nav { display: none; }
 
+/* The default menu is the accordion (shell/workspace.jsx), and the rules above
+   were written for the flat one: in the 68px rail its chevrons, group titles,
+   Pro marks and the service card kept their width, spilled out of the rail and
+   gave it a sideways scrollbar (owner's screenshot, 2.3.4). Desktop only: the
+   phone drawer is never collapsed (block below). */
+@media (min-width: 1024px) {
+  body.fx-collapsed .fx-side { overflow-x: hidden; }
+  body.fx-collapsed .fx-side .fx-gone-c,
+  body.fx-collapsed .fx-ws-head .fx-lbl,
+  body.fx-collapsed .fx-ws-item .fx-lbl { display: none; }
+  body.fx-collapsed .fx-ws-sub { margin: 0; padding: 0; border: 0 !important; }
+  body.fx-collapsed .fx-ws-head,
+  body.fx-collapsed .fx-ws-item { justify-content: center; padding-inline: 0 !important; min-height: 36px; }
+  body.fx-collapsed :is(.fx-ws-head, .fx-ws-item):hover .fx-tip-nav { opacity: 1; transform: translateY(-50%) scale(1); }
+  /* the count does not fit: a dot on the icon's corner */
+  body.fx-collapsed .fx-side .fx-nav-alert {
+    position: absolute; top: 4px; inset-inline-end: 8px;
+    min-width: 8px; width: 8px; height: 8px; padding: 0; font-size: 0; overflow: hidden;
+  }
+}
+
 @media (max-width: 1023.98px) {
   /* در کشو، جمع‌بودن معنا ندارد — همیشه کامل باز است */
   body.fx-collapsed .fx-side { width: 262px; padding-inline: 14px; }
@@ -2711,11 +2732,6 @@ body.fx-calm *, body.fx-calm *::before, body.fx-calm *::after {
   font-size: 10.5px; font-weight: 800; font-style: normal;
   display: grid; place-items: center;
   line-height: 1;
-}
-/* در حالت جمع‌شده‌ی نوار کناری، عدد جا نمی‌شود — نقطه کافی است */
-.fx-side.collapsed .fx-nav-alert {
-  min-width: 8px; width: 8px; height: 8px; padding: 0;
-  font-size: 0; overflow: hidden;
 }
 
 /* حباب پیام در پنل */
@@ -4885,9 +4901,11 @@ body::before {
 .fx-fw-hero[data-tone="danger"] .fx-fw-hero-ico { background: var(--danger-soft); color: var(--danger); }
 
 /* هدفِ لمسیِ ۳۲ پیکسل برای همه‌ی دکمه‌ها روی گوشی — نه صفحه‌به‌صفحه.
-   «بستن» و «بررسی» در جدول‌ها و برگه‌های قرصی ۲۸ پیکسل بودند. */
+   «بستن» و «بررسی» در جدول‌ها و برگه‌های قرصی ۲۸ پیکسل بودند.
+   :where() keeps it a floor: as a plain class rule it came after Tailwind and
+   beat every page's own min-h-[44px] (the SMS page's links measured 32). */
 @media (max-width: 767px) {
-  .fx-btn, .fx-btn-g, button.fx-pill { min-height: 32px; }
+  :where(.fx-btn, .fx-btn-g, button.fx-pill) { min-height: 32px; }
   .fx-fw-hero > a { flex-basis: 100%; text-align: center; }
   .fx-fw-hero .fx-pill { white-space: normal; }
 }

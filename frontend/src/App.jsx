@@ -411,14 +411,16 @@ export default function App() {
         })}
 
         <div className="mt-6 pt-4" style={{ borderTop: "1px solid var(--border)" }}>
-          <div className="fx-card p-3 mb-3" style={{ background: "var(--surface-2)" }}>
+          <div className="fx-card p-3 mb-3 fx-gone-c" style={{ background: "var(--surface-2)" }}>
             <div className="flex items-center gap-2 mb-1.5">
               <Circle size={7} fill="var(--ok)" strokeWidth={0} />
               <span className="text-[13px] font-semibold" style={{ color: "var(--ok)" }}>سرویس فعال</span>
             </div>
             <div className="text-[12px]" style={{ color: "var(--muted)" }} dir="ltr">t.me/{config.links?.channelUsername}</div>
           </div>
-          <button onClick={logout} className="fx-nav-item"><LogOut size={15} /> خروج</button>
+          <button onClick={logout} className="fx-nav-item">
+            <LogOut size={15} /> <span className="fx-lbl">خروج</span><span className="fx-tip-nav">خروج</span>
+          </button>
         </div>
       </aside>
 

@@ -11745,7 +11745,7 @@ var D_CODES = { ready: true,
       return { deposit: true, amount: 1000000, paid_at: "2026-10-06 09:21:00", time_from: "sms", why: "" };
     if (u.indexOf("/bot/smspay") >= 0) return {
       enabled: true, token: "hX3k9Qm2Lr8Vt5Wn1Pz7Yc4Bd6Fg0Js2Ka9Me3Ru5To",
-      path: "/api/sms/hX3k9Qm2Lr8Vt5Wn1Pz7Yc4Bd6Fg0Js2Ka9Me3Ru5To", senders: ["Blu"],
+      path: "/api/sms/hX3k9Qm2Lr8Vt5Wn1Pz7Yc4Bd6Fg0Js2Ka9Me3Ru5To", senders: ["Blu"], signed: true,
       suggest: [
         { sender: "Mellat", amount: 1000, at: "2026-10-07 08:50:00", personal: false },
         { sender: "+989121234567", amount: 280000, at: "2026-10-07 08:47:00", personal: true } ],
