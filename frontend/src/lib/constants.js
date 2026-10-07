@@ -197,6 +197,7 @@ export const WORKSPACES = {
           { key: "bot-inbox", label: "پیام‌ها", icon: MessageCircle,
             alert: "messages" },
           { key: "bot-users", label: "کاربران ربات", icon: Users },
+          { key: "bot-smspay", label: "تأیید خودکار رسید", icon: Zap, pro: "accounting" },
           { key: "bot-stats", label: "آمار و قیف", icon: TrendingUp, pro: "insights" },
           { key: "bot-report", label: "گزارش فروش", icon: FileText },
         ],

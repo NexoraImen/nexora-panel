@@ -70,6 +70,9 @@ PRO_PATHS = {
     "/api/mini/": "mini_app",
     "/api/admin/bot/mini-theme": "mini_app",
     "/api/admin/billing": "accounting",
+    # card receipts approved by the bank SMS (docs/specs/2026-10-07-sms-auto-approve.md)
+    "/api/admin/bot/smspay": "accounting",
+    "/api/sms/": "accounting",
     "/api/portal/summary": "accounting",
     "/api/portal/": "resellers",
     "/api/admin/tenant": "resellers",

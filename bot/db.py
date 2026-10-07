@@ -536,6 +536,12 @@ def _migrate(con):
         # removed by the owner or reseller: off the list, configs deleted,
         # orders kept for the accounts
         ("users", "deleted_at", "TEXT"),
+        # When the receipt came (UTC, like created_at), and the one line the
+        # SMS check said about it (docs/specs/2026-10-07-sms-auto-approve.md).
+        # Nothing stored the receipt's time before; matching the bank's SMS
+        # needs it.
+        ("orders", "receipt_at", "TEXT"),
+        ("orders", "sms_note", "TEXT"),
     ]
     for table, col, spec in adds:
         try:
@@ -589,6 +595,29 @@ def _migrate(con):
                     "ON credit_tx(tenant_id, id DESC)")
     except sqlite3.Error as _exc:
         log.warning("db migration/setup (_migrate): %s", _exc)
+
+    # Bank deposits read from the shop's forwarded SMS
+    # (docs/specs/2026-10-07-sms-auto-approve.md). Amount in toman, paid_at
+    # UTC like orders.created_at; `fp` makes a resent SMS a no-op; `order_id`
+    # is set once, by a conditional UPDATE, so one deposit pays one order.
+    # The SMS text and the balance in it are not kept.
+    try:
+        con.execute("""CREATE TABLE IF NOT EXISTS bank_deposits (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            tenant_id  INTEGER NOT NULL,
+            fp         TEXT NOT NULL,
+            amount     INTEGER NOT NULL,
+            paid_at    TEXT NOT NULL,
+            card4      TEXT,
+            order_id   INTEGER,
+            state      TEXT NOT NULL DEFAULT 'new',
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE (tenant_id, fp)
+        )""")
+        con.execute("CREATE INDEX IF NOT EXISTS idx_dep_open "
+                    "ON bank_deposits(tenant_id, state, amount)")
+    except sqlite3.Error as _exc:
+        log.warning("db migration/setup (bank_deposits): %s", _exc)
 
     # نام پلن اشتراک‌های قدیمی را از جدول پلن‌ها پر می‌کنیم.
     #
@@ -1150,7 +1179,7 @@ class TenantDB:
             cur = c.execute(
                 """UPDATE orders
                       SET status='awaiting', receipt_type=?, receipt_file=?,
-                          receipt_text=?
+                          receipt_text=?, receipt_at=CURRENT_TIMESTAMP
                     WHERE tenant_id=? AND id=? AND status='pending'""",
                 (rtype, rfile, rtext, self.tid, order_id))
             return bool(cur.rowcount)

@@ -544,6 +544,7 @@ export default function App() {
           {active === "bot-preview" && <ProSection area="preview" feature="insights" password={password} brand={config?.brand} />}
           {active === "bot-stats" && <ProSection area="insights" feature="insights" password={password} />}
           {active === "bot-backup" && <BotBackupSection password={password} />}
+          {active === "bot-smspay" && <ProSection area="smspay" name="SmsPaySection" feature="accounting" password={password} />}
           {active === "tun-bot" && <TunnelBotSection password={password} />}
           {active === "popup" && <PopupSection config={config} setConfig={setConfig} />}
           {active === "banners" && <BannersSection config={config} setConfig={setConfig} />}

@@ -586,6 +586,25 @@ def daily_report():
             _event(t["id"], "report_failed", None, {"error": str(_e)[:200]})
 
 
+def sms_sweep():
+    """
+    Orders and bank deposits the SMS check could not pair within its window,
+    said once in each shop's group (docs/specs/2026-10-07-sms-auto-approve.md).
+    """
+    sp = handlers.pro("smspay")
+    if not sp:
+        return
+    for t in db.all_tenants(active_only=True):
+        if not t.get("bot_token"):
+            continue
+        try:
+            ctx = handlers.Ctx(Bot(t["bot_token"]), t)
+            if sp.enabled(ctx):
+                sp.sweep(ctx)
+        except Exception:
+            log.exception("sms sweep failed for shop %s", t.get("id"))
+
+
 def process_panel_approvals():
     """
     سفارش‌هایی که از پنل مدیریت تایید شده‌اند را تحویل می‌دهد.
@@ -780,6 +799,7 @@ def scheduler_loop():
             if now - last.get("posts", 0) > 60:
                 send_due_posts()
                 sync_menu_buttons_on_license_change()
+                sms_sweep()
                 last["posts"] = now
 
             # تاییدهای پنل را سریع‌تر بررسی می‌کنیم — مشتری منتظر است

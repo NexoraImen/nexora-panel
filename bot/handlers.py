@@ -1423,18 +1423,35 @@ def receipt_submit(ctx, user, order_id, rtype, rfile=None, rtext=None,
     if uploaded:
         ctx.notify_group(f"سفارش #{order_id}: تصمیم شما؟",
                          keyboard=buttons, topic="receipts")
-        return True, None
-
-    if gid and rtype == "photo" and rfile and not str(rfile).startswith("local:"):
+    elif gid and rtype == "photo" and rfile and not str(rfile).startswith("local:"):
         try:
             ctx.bot.send_photo(gid, rfile, caption=info, keyboard=buttons,
                                topic_id=receipts_topic)
-            return True, None
         except TelegramError as e:
             log.warning("ارسال عکس رسید ناموفق: %s", e)
+            ctx.notify_group(info, keyboard=buttons, topic="receipts")
+    else:
+        ctx.notify_group(info, keyboard=buttons, topic="receipts")
 
-    ctx.notify_group(info, keyboard=buttons, topic="receipts")
+    # The bank's SMS may already be here (docs/specs/2026-10-07-sms-auto-approve.md).
+    # Off the customer's path: building the config takes seconds, and the
+    # "receipt received" reply should not wait for it.
+    sp = pro("smspay")
+    if sp and sp.enabled(ctx):
+        _spawn(sp.match, ctx, order_id)
     return True, None
+
+
+def _spawn(fn, *args):
+    """A daemon thread that logs instead of dying silently. Tests run it inline."""
+    import threading
+
+    def run():
+        try:
+            fn(*args)
+        except Exception:
+            log.exception("background %s failed", getattr(fn, "__name__", fn))
+    threading.Thread(target=run, daemon=True).start()
 
 
 def _receipt_caption(ctx, user, order, rtext):

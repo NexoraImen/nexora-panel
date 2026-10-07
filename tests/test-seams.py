@@ -201,7 +201,7 @@ if ghost:
 # مسیرهای عمومی و مسیرهای ایجنت را مستثنا می‌کنیم: صداکننده‌شان مرورگر،
 # صفحه‌ی اشتراک، یا اسکریپت ایجنت روی سرور دیگر است — نه App.jsx.
 PUBLIC = ("/api/public", "/api/sub", "/api/health", "/api/docs",
-          "/api/openapi", "/api/agent")
+          "/api/openapi", "/api/agent", "/api/sms")
 
 #: مسیرهایی که می‌دانیم صداکننده ندارند و دلیلش را نوشته‌ایم.
 #: این فهرست عمداً کوتاه است — هر ورودی یک بدهی است، نه یک استثنا.
@@ -620,6 +620,12 @@ KNOWN_PUBLIC = {
     # *نوشتن* رویش از `mini_user` (مشتری) یا `check_auth` (مالک)
     # می‌گذرد.
     "/api/public/chat-photo/{name}",
+
+    # The bank SMS from the shop's own phone (docs/specs/2026-10-07-sms-auto-approve.md).
+    # The forwarder app cannot send the admin password; the address carries
+    # 32 random bytes per shop, a wrong one is a 404, and all it can do is
+    # store a deposit that still needs a matching receipt.
+    "/api/sms/{token}",
 }
 
 # بقیه‌ی مسیرهای نماینده یک دسته‌اند و تستِ اختصاصیِ پایین تضمین

@@ -3,6 +3,33 @@
 Each entry says what was broken and why, not a list of commits.
 History before 2.0 lives with the 1.x line.
 
+## [2.3.0] - 2026-10-07
+
+### Card receipts approved by the bank's own SMS
+
+Approving a card payment meant opening each receipt and checking the bank by
+hand, and a fake receipt looked like a real one. Now the owner's Android phone
+forwards the bank's deposit SMS to the panel (SMS to URL Forwarder), and the
+panel approves an order when the money and the receipt agree:
+
+- Same amount, and the SMS and the customer's receipt within 10 minutes of
+  each other. Both must be there; whichever arrives second runs the check.
+- One deposit, one order, unique both ways. Two orders with the same amount
+  at the same time, a wrong amount, a late payment, a fake receipt, or a phone
+  that was offline all stay manual. The group and the order show one line:
+  «با پیامک بانک تطبیق نخورد — دستی بررسی کنید».
+- Approval is the ✅ button's own path: the config is built before the order
+  is approved, with commission and coins as before. One deposit can never pay
+  two orders, and a resent SMS is ignored.
+- Blu Bank's SMS is read to the toman (rial ÷ 10), never the balance line.
+  Withdrawals are ignored, and an amount without ریال/تومان is not guessed.
+  Only the amount, the time and a fingerprint are kept, never the balance.
+
+«ربات تلگرام» → «تأیید خودکار رسید»: on/off, the phone's address, the
+sender, the phone setup steps, a box to test any bank's SMS without approving
+anything, and the last deposits with the order each one paid. For the owner's
+shop for now; per-reseller later.
+
 ## [2.2.3] - 2026-10-06
 
 ### Every page measured from 320 to 1920 px

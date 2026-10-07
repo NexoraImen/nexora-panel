@@ -221,6 +221,14 @@ export function BotOrdersSection({ password }) {
                 {o.receipt_text}
               </button>
             )}
+            {/* what the bank-SMS check said about this order, in one line
+                (docs/specs/2026-10-07-sms-auto-approve.md) */}
+            {o.sms_note && (
+              <div className="text-[12px] mt-1"
+                style={{ color: o.sms_note.includes("خودکار") ? "var(--ok)" : "var(--warn)" }}>
+                {o.sms_note}
+              </div>
+            )}
           </div>
 
           {(o.status === "awaiting" || o.status === "review") && (
