@@ -535,8 +535,9 @@ export function BotSection({ password, dirty }) {
           <Users size={15} style={{ color: "var(--accent-2)" }} /> گروه مدیریت
         </div>
         <p className="text-[13px] mb-4 leading-relaxed" style={{ color: "var(--muted)" }}>
-          یک سوپرگروه خصوصی بسازید، تاپیک‌ها را فعال کنید، ربات را ادمین کنید و آیدی گروه را اینجا بگذارید.
-          ربات خودش تاپیک‌های لازم را می‌سازد.
+          یک سوپرگروه خصوصی بسازید، تاپیک‌ها را فعال کنید، ربات را ادمین کنید (با اجازه‌ی «مدیریتِ تاپیک‌ها»)
+          و آیدی گروه را اینجا بگذارید. ربات خودش این تاپیک‌ها را می‌سازد و هر پیام را در تاپیکِ خودش می‌فرستد:
+          رسیدها، فروش و تمدید، کاربرانِ تازه و تست، پشتیبانی، هشدارها (سرور و تانل هم)، گزارشِ روزانه، و پشتیبانِ خودکارِ پنل.
         </p>
         <Field label="آیدی گروه" hint="معمولاً با -100 شروع می‌شود">
           <input className="fx-input" dir="ltr" value={t.admin_group_id || ""}
@@ -608,6 +609,17 @@ export function BotSection({ password, dirty }) {
         <p className="text-[12.5px] leading-relaxed" style={{ color: "var(--muted)" }}>
           اگر فعال باشد، کاربر تا در کانال عضو نشود نمی‌تواند پلن‌ها را ببیند یا تست رایگان بگیرد.
         </p>
+        {s.force_channel_on && (
+          <div className="flex items-center justify-between gap-3 mt-3">
+            <span className="text-[13px]" style={{ color: "var(--dim)" }}>
+              از همان «استارت» بپرسد — پیش از شماره و منو
+            </span>
+            {/* default on: the owner asked for it from /start (2.3.8) */}
+            <Toggle checked={s.force_channel_start !== false}
+              onChange={() => upS({ force_channel_start: s.force_channel_start === false })}
+              label="از همان استارت" />
+          </div>
+        )}
 
         {/* Off: the fields fold away instead of sitting greyed out (the
             owner's screenshot: a greyed field and a three-line warning

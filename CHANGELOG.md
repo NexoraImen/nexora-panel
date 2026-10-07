@@ -3,6 +3,50 @@
 Each entry says what was broken and why, not a list of commits.
 History before 2.0 lives with the 1.x line.
 
+## [2.3.8] - 2026-10-07
+
+### The admin group's topics were never made
+
+The connection page said «the bot makes the topics», but nothing ever called
+`create_topic`, so every notification landed in General, and half of them
+did not even name a topic. Now:
+
+- the bot makes its topics when it starts, and any missing one the first time
+  it is needed: 🧾 رسیدها، 💰 فروش و تمدید، 👤 کاربرانِ تازه و تست، 🎫 پشتیبانی،
+  ⚠️ هشدارها، 📊 گزارشِ روزانه، 💾 پشتیبان;
+- every staff message names its topic (a test reads every `notify_group` in
+  the bot and fails on one without);
+- a topic deleted in the group is made again and the message resent; a group
+  without topics gets General, with one retry every ten minutes, not one on
+  every message;
+- server and tunnel alerts from the panel now reach the group's alerts topic
+  too, not only the management bot;
+- the scheduled backup (every 24 hours by default) goes to the group's backups
+  topic as well, through the sales bot, even with no management bot set.
+
+The bot needs the «Manage topics» admin right in the group.
+
+### The channel from /start
+
+The forced channel join asked only before the plans and the free trial. It is
+now the first thing after /start, before the phone question and the menu
+(«از همان «استارت» بپرسد», on by default). «عضو شدم» without joining says so
+in other words: the same words would have been sent again as a second
+message. «Back to menu» cannot step round it, and staff are never stopped.
+The referral code is kept either way.
+
+### The phone number read backwards
+
+«0912 123 4567» showed as «4567 123 0912» in the bot's Persian message: the
+three groups were laid out right to left. The number is now one isolated
+left-to-right run.
+
+### The mini app's «رسید شما ثبت شد»: the clock off centre
+
+The rule for the text under the icon (`.mn-pay-done > span`) also matched the
+icon's circle, a `<span>` too, and turned its grid into a block: the clock
+sat 9px above the centre (and the tick of «اشتراک ساخته شد» likewise).
+
 ## [2.3.7] - 2026-10-07
 
 ### «تأیید خودکار رسید»: real deposits marked fake, and a crowded page

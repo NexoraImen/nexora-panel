@@ -90,11 +90,15 @@ def send_backup(bot, chat_id, api, why=""):
                           f"بیشتر از ۵۰ مگابایت نمی‌پذیرد.\nروی سرور: <code>{path}</code>\n"
                           "یا از پنل: تنظیمات ← پنل، رمز و پشتیبان.", back_kb())
         return True
-    cap = (f"💾 <b>پشتیبانِ کاملِ پنل</b>{why}\n{datetime.now():%Y-%m-%d %H:%M}\n"
-           "توکن‌های ربات داخلش است؛ جایی امن نگهش دارید.\n"
-           "بازیابی: پنل ← تنظیمات ← «بازیابی از فایل»، یا <code>nexora restore</code>.")
-    bot.send_doc(chat_id, str(path), caption=cap)
+    bot.send_doc(chat_id, str(path), caption=backup_caption(why))
     return True
+
+
+def backup_caption(why=""):
+    """One caption for every place a backup is sent (admins, the admin group)."""
+    return (f"💾 <b>پشتیبانِ کاملِ پنل</b>{why}\n{datetime.now():%Y-%m-%d %H:%M}\n"
+            "توکن‌های ربات داخلش است؛ جایی امن نگهش دارید.\n"
+            "بازیابی: پنل ← تنظیمات ← «بازیابی از فایل»، یا <code>nexora restore</code>.")
 
 
 def handle(cfg, bot, api, update, state):
@@ -224,16 +228,28 @@ def update(data_dir, **changes):
 
 
 def scheduled_backup(raw, bot, api, data_dir, now=None):
-    """Send the scheduled backup to every admin when due. Returns True if sent."""
+    """
+    The scheduled backup, when due: to every admin of the management bot, and
+    to the sales bot's admin group, in its backups topic (2.3.8: the owner
+    wants the group's admins to have them; `api.group_backup` says False when
+    there is no group). Returns True if sent anywhere.
+    """
     s = settings(raw)
-    if not s["token"] or not s["admins"] or not backup_due(s["backupEvery"], raw.get("lastBackup"), now):
+    to_admins = bool(bot and s["token"] and s["admins"])
+    group = getattr(api, "group_backup", None)
+    if not (to_admins or group) or not backup_due(s["backupEvery"], raw.get("lastBackup"), now):
         return False
     sent = False
-    for cid in s["admins"]:
+    for cid in s["admins"] if to_admins else []:
         try:
             sent = send_backup(bot, cid, api, why=" (خودکار)") or sent
         except Exception as e:
             log.warning("admin bot: scheduled backup to %s failed: %s", cid, e)
+    if group:
+        try:
+            sent = bool(group(why=" (خودکار)")) or sent
+        except Exception as e:
+            log.warning("scheduled backup to the admin group failed: %s", e)
     if sent:
         update(data_dir, lastBackup=(now or datetime.now()).isoformat(timespec="seconds"))
     return sent
@@ -252,6 +268,13 @@ def loop(make_bot, api, data_dir, stop):
         s = settings(cfg)
         if not s["token"]:
             bot, tok = None, None
+            # no management bot: the admin group still gets the schedule
+            if time.time() - last_sched > 300:
+                last_sched = time.time()
+                try:
+                    scheduled_backup(cfg, None, api, data_dir)
+                except Exception as e:
+                    log.warning("scheduled backup: %s", str(e)[:200])
             stop.wait(30)
             continue
         if s["token"] != tok:

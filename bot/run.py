@@ -238,6 +238,11 @@ def tenant_loop(tenant_id: int):
             if tg is None or tg.token != tenant["bot_token"]:
                 tg = Bot(tenant["bot_token"])
                 _sync_menu_button(tenant, tg, name)
+                # the admin group's topics, all at once (handlers.TOPICS)
+                try:
+                    handlers.Ctx(tg, tenant).ensure_topics()
+                except Exception as e:
+                    log.warning("%s: admin group topics not made: %s", name, e)
 
             updates = tg.updates(offset=offset, timeout=25)
             backoff = 1

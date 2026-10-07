@@ -690,12 +690,18 @@ def normalize_phone(raw):
 
 
 def pretty_phone(p):
-    """نمایش خوانا: 98912... → 0912 123 4567"""
+    """
+    نمایش خوانا: 98912... → 0912 123 4567, isolated left-to-right.
+
+    In a Persian (right-to-left) message the three groups were laid out right
+    to left, so the customer saw his own number as «4567 123 0912» the moment
+    he shared it. LRI … PDI keeps the whole number one left-to-right run.
+    """
     d = normalize_phone(p)
     if d.startswith("98") and len(d) == 12:
         n = "0" + d[2:]
-        return f"{n[:4]} {n[4:7]} {n[7:]}"
-    return d or "—"
+        return f"⁦{n[:4]} {n[4:7]} {n[7:]}⁩"
+    return f"⁦{d}⁩" if d else "—"
 
 
 # ═══════════════════════════════════════════════════════════

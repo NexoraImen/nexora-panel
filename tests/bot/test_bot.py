@@ -344,6 +344,14 @@ check("و برای امروز جمله‌ی درست دارد",
 
 os.unlink(tmp)
 
+# ═══════════════════ شماره‌ی تلفن ═══════════════════
+# 2.3.8: in a Persian message «0912 123 4567» showed as «4567 123 0912»: the
+# groups were laid out right to left. One isolated left-to-right run now.
+for raw in ("+989121234567", "09121234567", "989121234567"):
+    pp = core.pretty_phone(raw)
+    check(f"شماره‌ی {raw} خوانا و چپ‌به‌راست", pp == "⁦0912 123 4567⁩", repr(pp))
+check("شماره‌ی خالی", core.pretty_phone("") == "—")
+
 # ═══════════════════ نتیجه ═══════════════════
 print(f"\n{'═' * 52}")
 print(f"  نتیجه:  {PASS} پاس  |  {FAIL} ناموفق")

@@ -8381,13 +8381,18 @@ def _health_alert(server, data, key):
                 lines.append(f"   <i>{c['hint'][:110]}</i>")
         text = "\n".join(lines)
 
-    # Server and tunnel alerts belong to the owner's management bot, not the
-    # bot his customers buy from (docs/specs/2026-10-01-admin-bot-backup-ui.md).
-    # Not delivered there (no bot set, or Telegram refused) → the sales bot's
-    # group as before: an alert that goes nowhere is the one failure this
-    # function exists to prevent.
-    if _adminbot_alert(text):
-        return
+    # Server and tunnel alerts go to the owner's management bot
+    # (docs/specs/2026-10-01-admin-bot-backup-ui.md) and, since 2.3.8, also to
+    # the sales bot's admin group, in its alerts topic: the owner wants the
+    # group's admins to know everything. With no group and nothing delivered
+    # by the management bot, the owner's private chat: an alert that goes
+    # nowhere is the one failure this function exists to prevent.
+    _group_alert(text, owner_if_no_group=not _adminbot_alert(text))
+
+
+def _group_alert(text, owner_if_no_group=True):
+    """The sales bot's admin group, alerts topic; with no group, the owner's
+    private chat when `owner_if_no_group`. True when Telegram took it."""
     try:
         import sqlite3 as sq
         con = sq.connect(f"file:{BOT_DB}?mode=ro", uri=True, timeout=5)
@@ -8413,7 +8418,7 @@ def _health_alert(server, data, key):
         con.close()
         if not r or not r["bot_token"]:
             log.info("health alert not sent: bot has no token")
-            return
+            return False
         thread = None
         if r["admin_group_id"]:
             target = r["admin_group_id"]
@@ -8421,11 +8426,13 @@ def _health_alert(server, data, key):
                 thread = (json.loads(r["topics"] or "{}") or {}).get("alerts")
             except (json.JSONDecodeError, TypeError, AttributeError):
                 thread = None
+        elif not owner_if_no_group:
+            return False
         else:
             target = r["owner_tg_id"]
         if not target:
             log.info("health alert not sent: no admin group and no owner chat")
-            return
+            return False
         import urllib.request
         msg = {"chat_id": target, "text": text, "parse_mode": "HTML"}
         if thread:
@@ -8434,9 +8441,11 @@ def _health_alert(server, data, key):
             f"https://api.telegram.org/bot{r['bot_token']}/sendMessage",
             data=json.dumps(msg).encode(), headers={"Content-Type": "application/json"})
         urllib.request.urlopen(req, timeout=12)
+        return True
     except Exception as e:
         # توکن در آدرس است؛ فقط نوع و متنِ کوتاهِ خطا، نه URL
         log.warning("health alert not sent: %s: %s", type(e).__name__, str(e)[:160])
+        return False
 
 
 # ── Management bot (docs/specs/2026-10-01-admin-bot-backup-ui.md, part B) ──
@@ -8503,6 +8512,27 @@ class _AdminBotApi:
 
     def backup(self):
         return full_backup_file()
+
+    def group_backup(self, why=""):
+        """The backup to the sales bot's admin group, backups topic. False
+        (and no zip built) when there is no group: the schedule then tries
+        again later instead of counting it as sent."""
+        try:
+            t = _root_tenant_row()
+        except HTTPException:
+            return False
+        if not t or not t.get("bot_token") or not t.get("admin_group_id"):
+            return False
+        h = _bot_handlers()
+        ctx = h.Ctx(h.Bot(t["bot_token"]), t)
+        gid, thread = ctx.staff_chat("backups")
+        path = Path(self.backup())
+        if path.stat().st_size > ADMINBOT.TG_DOC_LIMIT:
+            ctx.notify_group(f"💾 پشتیبان ساخته شد ولی بزرگ‌تر از ۵۰ مگابایت است و تلگرام نمی‌پذیرد."
+                             f"\nروی سرور: <code>{path}</code>", topic="backups")
+            return True
+        ctx.bot.send_doc(gid, str(path), caption=ADMINBOT.backup_caption(why), topic_id=thread)
+        return True
 
     def sales(self):
         t = _root_tenant_row()
@@ -8659,8 +8689,10 @@ def _tunnel_alert_tick():
             text = (f"{'🔴' if new == 'bad' else '🟡'} <b>{n.get('name')}</b>\n{v.get('title') or ''}"
                     + (f"\n\n{str(v.get('reason'))[:300]}" if v.get("reason") else "")
                     + (f"\n\nچه کنم: {str(v.get('fix'))[:200]}" if v.get("fix") else ""))
-        if not _adminbot_alert(text):
-            log.info("tunnel alert not sent (no tunnel or management bot): %s", n.get("name"))
+        # the management bot, and the admin group's alerts topic too (2.3.8)
+        delivered = _adminbot_alert(text)
+        if not _group_alert(text, owner_if_no_group=False) and not delivered:
+            log.info("tunnel alert not sent (no management bot, no admin group): %s", n.get("name"))
     return len(changes)
 
 

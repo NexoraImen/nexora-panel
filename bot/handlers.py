@@ -7,6 +7,7 @@ ctx شامل bot، db، tenant و settings است.
 
 import json
 import os
+import threading
 import time
 import logging
 from pathlib import Path
@@ -82,6 +83,24 @@ def pro_allowed(feature):
     except Exception:
         log.exception("license check failed; Pro stays locked")
         return False
+
+
+#: The admin group's topics, key → title. Every staff notification names one
+#: (a test checks no `notify_group` call is left without), so nothing lands in
+#: General unless the group has no topics at all.
+TOPICS = {
+    "receipts": "🧾 رسیدها",
+    "sales": "💰 فروش و تمدید",
+    "users": "👤 کاربرانِ تازه و تست",
+    "tickets": "🎫 پشتیبانی",
+    "alerts": "⚠️ هشدارها",
+    "stats": "📊 گزارشِ روزانه",
+    "backups": "💾 پشتیبان",
+}
+#: kinds that share a topic, so the group stays a handful of threads
+TOPIC_ALIAS = {"renewals": "sales", "support": "tickets", "trials": "users"}
+_TOPIC_LOCK = threading.Lock()          # two notifications must not make one topic twice
+_TOPIC_FAILED = {}                      # tenant → when making a topic last failed
 
 
 # ═══════════════════════════════════════════════════════════
@@ -281,6 +300,66 @@ class Ctx:
     DM_TOPICS = ("receipts", "alerts", "tickets")
 
     def staff_chat(self, topic=None):
+        topic = TOPIC_ALIAS.get(topic, topic)
+        return self._staff_chat(topic)
+
+    def topic_id(self, gid, key):
+        """
+        The admin group's thread for `key`, made the first time it is needed.
+
+        Until 2.3.8 nothing made them: the connection page promised «the bot
+        makes the topics», `create_topic` was never called, and every
+        notification landed in General. Made here, lazily, so a kind added
+        later gets its topic too; a group without topics (or a bot without
+        the right to manage them) is said in the log and retried after ten
+        minutes, not on every message.
+        """
+        if key not in TOPICS:
+            return None
+        with _TOPIC_LOCK:
+            t = DB.get_tenant(self.tid) or {}
+            try:
+                topics = json.loads(t.get("topics") or "{}") or {}
+            except (json.JSONDecodeError, TypeError):
+                topics = {}
+            if topics.get(key):
+                return topics[key]
+            if time.monotonic() - _TOPIC_FAILED.get(self.tid, -1e9) < 600:
+                return None
+            try:
+                made = self.bot.create_topic(gid, TOPICS[key]) or {}
+            except Exception as e:      # any failure here: General, never a lost message
+                made = {}
+                log.warning("topic %s not made in group %s (%s): messages go to General", key, gid, e)
+            thread = made.get("message_thread_id") if isinstance(made, dict) else None
+            if not thread:
+                _TOPIC_FAILED[self.tid] = time.monotonic()
+                return None
+            topics[key] = thread
+            DB.update_tenant(self.tid, topics=topics)
+            return thread
+
+    def ensure_topics(self):
+        """All topics at once (the bot's start), so the group is laid out
+        before the first receipt, not one topic at a time."""
+        gid = (DB.get_tenant(self.tid) or {}).get("admin_group_id")
+        if gid:
+            for key in TOPICS:
+                if not self.topic_id(gid, key):
+                    break                   # one refusal says enough; retried later
+
+    def forget_topic(self, key):
+        """A topic deleted in the group: its id is dropped and made again."""
+        with _TOPIC_LOCK:
+            t = DB.get_tenant(self.tid) or {}
+            try:
+                topics = json.loads(t.get("topics") or "{}") or {}
+            except (json.JSONDecodeError, TypeError):
+                topics = {}
+            if topics.pop(key, None) is not None:
+                DB.update_tenant(self.tid, topics=topics)
+
+    def _staff_chat(self, topic=None):
         """
         (chat_id, topic_id) برای اعلانِ مدیریتی.
 
@@ -294,11 +373,7 @@ class Ctx:
         t = DB.get_tenant(self.tid) or {}
         gid = t.get("admin_group_id")
         if gid:
-            try:
-                topics = json.loads(t.get("topics") or "{}")
-            except json.JSONDecodeError:
-                topics = {}
-            return gid, topics.get(topic)
+            return gid, (self.topic_id(gid, topic) if topic else None)
         if topic in self.DM_TOPICS and t.get("owner_tg_id"):
             return t["owner_tg_id"], None
         return None, None
@@ -314,6 +389,9 @@ class Ctx:
         gid, tpid = self.staff_chat(topic)
         if not gid:
             return None
+        return self._send_staff(gid, tpid, topic, text, keyboard, photo, retry=True)
+
+    def _send_staff(self, gid, tpid, topic, text, keyboard, photo, retry):
         try:
             if photo:
                 return self.bot.send_photo_bytes(
@@ -326,6 +404,11 @@ class Ctx:
             return self.bot.send(gid, text, keyboard=keyboard,
                                  topic_id=tpid)
         except TelegramError as e:
+            # someone deleted the topic: make it again and send there, once
+            if retry and tpid and "thread not found" in str(e).lower():
+                key = TOPIC_ALIAS.get(topic, topic)
+                self.forget_topic(key)
+                return self._send_staff(gid, self.topic_id(gid, key), topic, text, keyboard, photo, retry=False)
             log.warning("ارسال به گروه ناموفق: %s", e)
             return None
 
@@ -355,7 +438,7 @@ def record(ctx, kind, user_id=None, data=None, who=None):
     if not EV.is_alert(kind):
         return
     try:
-        ctx.notify_group(EV.alert_text(kind, data, who=esc(who) if who else None))
+        ctx.notify_group(EV.alert_text(kind, data, who=esc(who) if who else None), topic="alerts")
     except Exception:
         # گروه خبردار نشد؛ ولی ردیفِ جدول سرِ جایش است. دو مسیرِ
         # جدا، تا شکستِ یکی دیگری را نبرد.
@@ -721,7 +804,31 @@ def cmd_start(ctx, msg, args=None):
         # مقصد خراب بود؛ منوی اصلی بهتر از هیچ است — ولی بی‌صدا نه
         log.warning("دیپ‌لینک %r کار نکرد", args, exc_info=True)
 
-    ctx.bot.send(tg["id"], welcome_text(ctx, user), keyboard=main_menu(ctx, user))
+    show_menu(ctx, user, tg["id"])
+
+
+def channel_gate(ctx, user, chat_id, message_id=None, retry=False):
+    """
+    The channel before anything else, when the shop asks for it from /start
+    (2.3.8, the owner: «as soon as he presses start, ask him to join»): before
+    the phone question and the menu. True = stop here. Staff are never gated;
+    the referral code was already kept by `_get_or_create`.
+    """
+    return bool(ctx.s.get("force_channel_start", True) and not ctx.is_admin(user["tg_id"])
+                and require_membership(ctx, chat_id, message_id, user, again="joined", retry=retry))
+
+
+def show_menu(ctx, user, chat_id, message_id=None, retry=False):
+    """
+    The main menu, behind the channel. Also the `menu` button everywhere, so
+    the gate cannot be stepped round by pressing «back».
+    """
+    if channel_gate(ctx, user, chat_id, message_id, retry):
+        return
+    # «عضو شدم» after /start: the phone question that /start held back
+    if retry and ask_phone(ctx, user, chat_id):
+        return
+    _reply(ctx, chat_id, message_id, welcome_text(ctx, user), main_menu(ctx, user))
 
 
 # ═══════════════════════════════════════════════════════════
@@ -1268,7 +1375,7 @@ def wallet_purchase(ctx, user, plan_id, renew_sub_id=None,
         f"پلن: {esc(p['name'])}"
         + ("\nنوع: تمدید" if renew_sub_id or renew_license else "")
         + f"\nمبلغ: {core.toman(price)} تومان"
-        + (f" (کد تخفیف {core.fa(dpct)}٪ از {core.toman(p['price'])})" if dpct else ""))
+        + (f" (کد تخفیف {core.fa(dpct)}٪ از {core.toman(p['price'])})" if dpct else ""), topic="sales")
 
     # `price`, not the plan's list price: with a discount code the buyer, the
     # mini app and the group were all told the undiscounted amount, while the
@@ -1729,7 +1836,7 @@ def approve_order(ctx, order_id, admin_tg_id):
         ctx.notify_group(
             f"💳 <b>شارژ کیف پول</b>\n"
             f"کاربر: {esc(u.get('first_name') or u['tg_id'])}\n"
-            f"مبلغ: {core.toman(order['amount'])} تومان")
+            f"مبلغ: {core.toman(order['amount'])} تومان", topic="sales")
         return True, "شارژ انجام شد"
 
     # ساخت کانفیگ *قبل* از تایید نهایی.
@@ -1818,7 +1925,7 @@ def approve_order(ctx, order_id, admin_tg_id):
             + (f"کلید فقط یک‌بار نمایش داده می‌شود: روی سرورِ ناشر "
                f"<code>python -m issuer.cli rekey {esc(lic['id'])}</code> "
                "بزنید و کلیدِ تازه را دستی بفرستید." if lic else
-               "اشتراک در پنل سالم است. لینک را دستی بفرستید."))
+               "اشتراک در پنل سالم است. لینک را دستی بفرستید."), topic="alerts")
         return True, result
 
     return True, result
@@ -3043,11 +3150,23 @@ def trial_needs_channel(ctx):
     return bool(ctx.s.get("force_channel")) and bool(ctx.s.get("trial_channel", True))
 
 
-def require_membership(ctx, chat_id, message_id, u, force=False, again="menu"):
-    """اگر عضو نبود پیام می‌دهد و True برمی‌گرداند (یعنی ادامه نده)."""
+def require_membership(ctx, chat_id, message_id, u, force=False, again="menu", retry=False):
+    """
+    اگر عضو نبود پیام می‌دهد و True برمی‌گرداند (یعنی ادامه نده).
+
+    `retry`: «عضو شدم» pressed but not a member yet. Other words, not the same
+    message: editing a message into the same text is refused by Telegram, and
+    `_reply` would then send it again as a second, identical message.
+    """
     allowed, invite = check_membership(ctx, u, force=force, again=again)
     if allowed:
         return False
+    if retry:
+        return _reply(ctx, chat_id, message_id,
+                      "⏳ <b>هنوز عضویتتان دیده نشد</b>\n\n"
+                      "اول دکمه‌ی «عضویت در کانال» را بزنید و Join کنید، بعد برگردید و "
+                      "«عضو شدم» را بزنید. اگر همین حالا عضو شدید، چند ثانیه صبر کنید.",
+                      invite) or True
     _reply(ctx, chat_id, message_id,
            "📢 <b>یک قدم مانده</b>\n\n"
            "برای ادامه، اول در کانال ما عضو شوید. اطلاع‌رسانی قطعی‌ها و "
@@ -4138,6 +4257,8 @@ def _on_message(ctx, msg):
         user = _back_from_left(ctx, _get_or_create(ctx, frm, ref))
         if user.get("is_blocked"):
             return None
+        if channel_gate(ctx, user, msg["chat"]["id"]):
+            return None
         if ask_phone(ctx, user, msg["chat"]["id"]):
             return None
         return cmd_start(ctx, msg, ref)
@@ -4189,7 +4310,8 @@ def _on_message(ctx, msg):
 
 # نگاشت callback ساده → تابع
 _SIMPLE = {
-    "menu":    lambda ctx, u, c, m: _reply(ctx, c, m, welcome_text(ctx, u), main_menu(ctx, u)),
+    "menu":    lambda ctx, u, c, m: show_menu(ctx, u, c, m),
+    "joined":  lambda ctx, u, c, m: show_menu(ctx, u, c, m, retry=True),
     "buy":     lambda ctx, u, c, m: show_plans(ctx, u, c, m),
     "mysubs":  lambda ctx, u, c, m: show_subs(ctx, u, c, m),
     "myorders": lambda ctx, u, c, m: my_orders(ctx, u, c, m),

@@ -1975,7 +1975,9 @@ body.fx-calm *, body.fx-calm *::before, body.fx-calm *::after {
   to   { transform: scale(1);  opacity: 1; }
 }
 .mn-pay-done > b { display: block; font-size: 16px; color: var(--text); }
-.mn-pay-done > span { display: block; font-size: 12.5px; color: var(--muted); margin-top: 5px; }
+/* not the icon's circle: it is a <span> too, and this rule (more specific)
+   turned its grid into a block, so the clock sat 9px off its centre */
+.mn-pay-done > span:not(.mn-pay-tick) { display: block; font-size: 12.5px; color: var(--muted); margin-top: 5px; }
 .mn-pay-left { margin-top: 12px; font-size: 13px; color: var(--muted); }
 .mn-pay-left b { color: var(--ok); }
 

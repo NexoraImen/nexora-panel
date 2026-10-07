@@ -246,6 +246,42 @@ URLS.clear()
 AP._health_alert("سرور پنل", {"level": "warn", "summary": "رم", "checks": []}, key="t2")
 check("no management bot → sales bot, unchanged", any("777:SALES" in u for u in URLS))
 
+# 2.3.8: the owner wants the admin group to know everything, so a server
+# alert reaches the group's alerts topic even when the management bot took it
+A.update(DATA, token="123:ADMIN")
+H.DB.update_tenant(TID, admin_group_id=-100900, topics={"alerts": 41, "backups": 42})
+URLS.clear()
+SENT.clear()
+AP._health_alert("سرور پنل", {"level": "crit", "summary": "دیسک پر", "checks": []}, key="t3")
+check("a group set: the alert goes to the management bot and to the group",
+      SENT and SENT[-1][0] == "123:ADMIN" and any("777:SALES" in u for u in URLS), (SENT, URLS))
+
+
+class GroupBot:
+    docs = []
+
+    def __init__(self, token=None):
+        self.token = token
+
+    def send_doc(self, chat_id, path, caption=None, topic_id=None):
+        GroupBot.docs.append((self.token, chat_id, topic_id, caption))
+
+
+_hb = H.Bot
+H.Bot = GroupBot
+_zip = DATA / "b.zip"
+_zip.write_bytes(b"PK")
+_api = AP._AdminBotApi()
+_api.backup = lambda: str(_zip)
+check("the backup goes to the admin group's backups topic, by the sales bot",
+      _api.group_backup(" (خودکار)") and GroupBot.docs
+      and GroupBot.docs[-1][:3] == ("777:SALES", -100900, 42) and "خودکار" in GroupBot.docs[-1][3],
+      GroupBot.docs)
+H.DB.update_tenant(TID, admin_group_id=None)
+GroupBot.docs.clear()
+check("… no group: False, and nothing built or sent", _api.group_backup() is False and not GroupBot.docs)
+H.Bot = _hb
+
 
 def call(path, method="GET", body=None):
     hd = {"x-admin-password": AP._INTERNAL_PW, "x-admin-path": AP.admin_path(),
