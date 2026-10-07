@@ -3,6 +3,39 @@
 Each entry says what was broken and why, not a list of commits.
 History before 2.0 lives with the 1.x line.
 
+## [2.3.3] - 2026-10-07
+
+### «تأیید خودکار رسید»: set up in three steps, and three holes closed
+
+Setup meant typing a 60-character address into a phone app and knowing the
+bank's exact sender name. The page is now three steps that turn green by
+themselves:
+
+1. install the app (Google Play / F-Droid buttons);
+2. scan the QR with the phone's camera: the phone opens a page that says
+   "connected" and copies the address;
+3. make a small test deposit, then tap «بله، این بانکِ من است» when the
+   panel asks. Several cards on different banks: one test deposit each.
+
+Holes found while checking it:
+
+- **Any sender was accepted.** Anyone could text the owner's phone «واریز …
+  به حساب شما نشست» from their own number, together with a fake receipt.
+  Now only senders the owner trusted with that tap count. A mobile number
+  cannot be trusted, since banks never text from one. Senders compare exactly,
+  so "xBlu" is not "Blu".
+- **A fake receipt could take a real buyer's money.** If two people bought
+  the same plan, one paid and had not yet sent the receipt, and the other
+  sent a fake receipt, the deposit matched the fake one: the real buyer's
+  order was not compared because it was not "awaiting" yet. Any open order of
+  the same amount now makes it manual.
+- **The same SMS from two phones made two deposits.** The phone's received
+  time was part of the duplicate check. When the SMS has its own time, the
+  check uses the sender and the text only.
+
+A test now runs the whole path: a real card order, a real receipt, the
+bank's SMS through the panel, the config built and delivered.
+
 ## [2.3.2] - 2026-10-07
 
 ### The phone's SMS was refused before it reached the panel

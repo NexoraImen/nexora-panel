@@ -11739,15 +11739,21 @@ var D_CODES = { ready: true,
                activeFeaturesCount: 4 };
     }
     // «تأیید خودکار رسید» (backend/pro/smspay.py): times are UTC, as stored
+    // a real QR of a sample address (segno, as the panel makes it)
+    if (u.indexOf("/bot/smspay/qr") >= 0) return { __blob: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAKwAAACsAQAAAADOSnp1AAABcElEQVR42u1XUYpDQQwKvYD3v2Vu4Kpp6X70p+Df7lAo8wpO6qjJG35aO3/78c4M9Sv0BWy2+5iP67vHwtEJ3MUiJ9y2hb2jj6tWycy2i60FkNr3sQXLgeC3ix0eRrSIcQM3+Q4R79XUSaQYUjCRivc9vsV1LtSUn1hadcOYq6oFLmRX38Me6w8hXQcBRV8Ky9LGqaWqkwuUDfPnz6JORARMhJXiDdH0jm/PQoGZ8b0WObGqkyRRZFHfucWU/hT7FuvGq2hY2mCVb1jY6Q/cJzM1vlXvZbjKZ04r3mX4YNiO84vYy/jF3hcuUcwTO32SV24Q+i7yLTsGdS6/m3yvrXiTimNrI5deb3Cyxu1g2n1R3+ccj1Vmvcn3xaDnByTJq72BE1e+msMU+b6RM+0Yp/PufMI4x2Eb65fnKvebiEansDzH5g+4+mp+36yZXpZg2fb8DQfKGp1k+b0hEegDynXPqXqvLdubVX3/v1/+fvwDrtUAkHdNh3IAAAAASUVORK5CYII=" };
     if (u.indexOf("/bot/smspay/test") >= 0)
       return { deposit: true, amount: 1000000, paid_at: "2026-10-06 09:21:00", time_from: "sms", why: "" };
     if (u.indexOf("/bot/smspay") >= 0) return {
       enabled: true, token: "hX3k9Qm2Lr8Vt5Wn1Pz7Yc4Bd6Fg0Js2Ka9Me3Ru5To",
       path: "/api/sms/hX3k9Qm2Lr8Vt5Wn1Pz7Yc4Bd6Fg0Js2Ka9Me3Ru5To", senders: ["Blu"],
+      suggest: [
+        { sender: "Mellat", amount: 1000, at: "2026-10-07 08:50:00", personal: false },
+        { sender: "+989121234567", amount: 280000, at: "2026-10-07 08:47:00", personal: true } ],
       inbox: [
-        { sender: "Blu", outcome: "واریزِ ۲۸۰٬۰۰۰ تومان ثبت شد", at: "2026-10-07 08:42:10" },
-        { sender: "Blu", outcome: "برداشت است، نه واریز", at: "2026-10-07 08:20:00" },
-        { sender: "+9890001", outcome: "فرستنده «+9890001» در فهرستِ فرستنده‌ها نیست", at: "2026-10-07 07:58:30" } ],
+        { sender: "Mellat", outcome: "واریز از «Mellat»؛ این فرستنده هنوز تأیید نشده", at: "2026-10-07 08:50:00", untrusted: 1, amount: 1000 },
+        { sender: "Blu", outcome: "واریزِ ۲۸۰٬۰۰۰ تومان ثبت شد", at: "2026-10-07 08:42:10", untrusted: 0, amount: 280000 },
+        { sender: "Blu", outcome: "برداشت است، نه واریز", at: "2026-10-07 08:20:00", untrusted: 0, amount: null },
+        { sender: "+989121234567", outcome: "واریز از «+989121234567»؛ این فرستنده هنوز تأیید نشده", at: "2026-10-07 08:47:00", untrusted: 1, amount: 280000 } ],
       deposits: [
         { id: 14, amount: 280000, paid_at: "2026-10-07 08:42:00", order_id: 4102, state: "matched" },
         { id: 13, amount: 150000, paid_at: "2026-10-07 08:31:00", order_id: null, state: "new" },
