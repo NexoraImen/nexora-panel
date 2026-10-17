@@ -18,6 +18,7 @@ import { AreaChart, BarList, ConfirmModal, Donut, EmptyState, Field, InfoBox, Ms
   Tabs, Toggle } from "../ui/index";
 import { TemplateThumb } from "./bot/themes";
 import { isoToJalaliStamp } from "../ui/jalali";
+import { readRestore, RestoreUnknown } from "../lib/restore-stream";
 
 /**
  * داشبورد — اولین چیزی که مالک بعد از ورود می‌بیند.
@@ -1455,6 +1456,17 @@ export function BackupCard({ password, onRestored }) {
   const [busy, setBusy] = useState("");
   const [msg, setMsg] = useState(null);
   const [more, setMore] = useState(false);
+  const [restoreState, setRestoreState] = useState(null);
+  const [restoreUnknown, setRestoreUnknown] = useState(false);
+  const [elapsed, setElapsed] = useState(0);
+  useEffect(() => {
+    if (busy !== "restore") return;
+    const started = Date.now();
+    const timer = setInterval(() => setElapsed(Math.floor((Date.now() - started) / 1000)), 1000);
+    const warnOnLeave = event => { event.preventDefault(); event.returnValue = ""; };
+    window.addEventListener("beforeunload", warnOnLeave);
+    return () => { clearInterval(timer); window.removeEventListener("beforeunload", warnOnLeave); };
+  }, [busy]);
   const H = { "X-Admin-Password": password };
 
   const save = (blob, name) => {
@@ -1483,22 +1495,34 @@ export function BackupCard({ password, onRestored }) {
   const restoreFull = async (e) => {
     const file = e.target.files?.[0];
     e.target.value = "";
-    if (!file) return;
+    if (!file || busy || restoreUnknown) return;
     if (!confirm("همه‌چیزِ پنل (ربات، حسابداری، تنظیمات، رسیدها) با این فایل جایگزین می‌شود. "
       + "پیش از آن یک نسخه از وضعیتِ فعلی روی سرور نگه داشته می‌شود. ادامه می‌دهید؟")) return;
-    setBusy("restore"); setMsg(null);
+    setBusy("restore"); setMsg(null); setElapsed(0); setRestoreState({ phase: "upload" });
     try {
-      const res = await fetch(`${API_URL}/api/admin/backup/full/restore`, {
-        method: "POST", headers: { ...H, "Content-Type": "application/zip" }, body: file,
-      });
+      let res;
+      try {
+        res = await fetch(`${API_URL}/api/admin/backup/full/restore`, {
+          method: "POST", headers: { ...H, "Content-Type": "application/zip", Accept: "application/x-ndjson" }, body: file,
+        });
+      } catch {
+        throw new RestoreUnknown("ارتباط هنگام ارسال قطع شد؛ نتیجه نامشخص است. پیش از ارسال دوباره، وضعیت سرور را بررسی کنید.");
+      }
       if (res.status === 413) throw new Error("فایل برای وب‌سرور بزرگ است؛ از دستورِ nexora restore روی سرور استفاده کنید.");
-      const j = await okJson(res, "بازیابی ناموفق بود");
+      if (res.status >= 500) throw new RestoreUnknown("سرور پاسخ نهایی نداد؛ نتیجهٔ بازیابی نامشخص است. دوباره فایل نفرستید و وضعیت سرور را بررسی کنید.");
+      if (!res.ok) await okJson(res, "بازیابی شروع نشد");
+      const j = await readRestore(res, setRestoreState);
       setMsg({ t: j.botWarning ? "err" : "ok",
         m: `بازیابی شد: ${faNum(j.restored.length)} فایل، از پشتیبانِ نسخه‌ی ${j.from || "?"}.`
           + (j.botWarning ? ` ${j.botWarning}` : "") });
-      onRestored();
-    } catch (err) { setMsg({ t: "err", m: errMsg(err) }); }
-    finally { setBusy(""); }
+      try { await onRestored(); }
+      catch { setMsg({ t: j.botWarning ? "err" : "ok", m: "بازیابی انجام شد؛ نمایش پنل به‌روز نشد. ممکن است لازم باشد با اطلاعات ورودِ پشتیبان دوباره وارد شوید."
+        + (j.botWarning ? ` ${j.botWarning}` : "") }); }
+    } catch (err) {
+      if (err instanceof RestoreUnknown) setRestoreUnknown(true);
+      setMsg({ t: "err", m: errMsg(err) });
+    }
+    finally { setBusy(""); setRestoreState(null); }
   };
 
   const exportConfig = async () => {
@@ -1515,7 +1539,7 @@ export function BackupCard({ password, onRestored }) {
   const importConfig = async (e) => {
     const file = e.target.files?.[0];
     e.target.value = "";
-    if (!file) return;
+    if (!file || busy || restoreUnknown) return;
     if (!confirm("فقط تنظیماتِ صفحه‌ی اشتراک با این فایل جایگزین می‌شود. ادامه می‌دهید؟")) return;
     let parsed;
     try { parsed = JSON.parse(await file.text()); }
@@ -1545,13 +1569,22 @@ export function BackupCard({ password, onRestored }) {
         <a href="#/bot-backup" style={{ color: "var(--accent-2)" }}>ارسالِ خودکار با ربات مدیریت ›</a>
       </p>
       <Msg msg={msg} />
+      {busy === "restore" && <div role="status" aria-live="polite" className="text-[12.5px] mb-3" style={{ color: "var(--accent-2)" }}>
+        <span>{({ upload: "در حال ارسال فایل و انتظار برای پاسخ سرور", received: "فایل دریافت شد",
+          verify: "در حال بررسی سلامت و نسخهٔ پشتیبان", stop_bot: "در حال توقف موقت ربات",
+          safety: "در حال گرفتن نسخهٔ امن از اطلاعات فعلی", restore: "در حال بازیابی اطلاعات",
+          start_bot: "در حال روشن‌کردن ربات", complete: "بازیابی انجام شد", failed: "بازیابی کامل نشد" })[restoreState?.phase] || "در حال بازیابی"}</span>
+        <span> · {faNum(elapsed)} ثانیه</span>
+        {restoreState?.phase === "restore" && <span> · {faNum(restoreState.completed || 0)} از {faNum(restoreState.total || 0)} فایل</span>}
+        <div style={{ color: "var(--muted)" }}>تا دریافت نتیجهٔ نهایی، دوباره فایل نفرستید.</div>
+      </div>}
       <div className="grid grid-cols-2 gap-2">
-        <button onClick={downloadFull} disabled={!!busy} className="fx-btn flex items-center justify-center gap-2 py-2.5 text-[13px]">
+        <button onClick={downloadFull} disabled={!!busy || restoreUnknown} className="fx-btn flex items-center justify-center gap-2 py-2.5 text-[13px]">
           {spin("full", Download)} دریافت پشتیبانِ کامل
         </button>
-        <label className={`fx-btn-g flex items-center justify-center gap-2 py-2.5 text-[13px] ${busy ? "opacity-60" : "cursor-pointer"}`}>
+        <label className={`fx-btn-g flex items-center justify-center gap-2 py-2.5 text-[13px] ${busy || restoreUnknown ? "opacity-60" : "cursor-pointer"}`}>
           {spin("restore", Upload)} بازیابی از فایل
-          <input type="file" accept=".zip,application/zip" onChange={restoreFull} className="hidden" disabled={!!busy} />
+          <input type="file" accept=".zip,application/zip" onChange={restoreFull} className="hidden" disabled={!!busy || restoreUnknown} />
         </label>
       </div>
       <button onClick={() => setMore(!more)} className="mt-3 text-[12px] flex items-center gap-1" style={{ color: "var(--dim)" }}>
@@ -1559,12 +1592,12 @@ export function BackupCard({ password, onRestored }) {
       </button>
       {more && (
         <div className="grid grid-cols-2 gap-2 mt-2">
-          <button onClick={exportConfig} disabled={!!busy} className="fx-btn-g flex items-center justify-center gap-2 py-2 text-[12.5px]">
+          <button onClick={exportConfig} disabled={!!busy || restoreUnknown} className="fx-btn-g flex items-center justify-center gap-2 py-2 text-[12.5px]">
             {spin("cfg", Download)} دریافتِ تنظیمات
           </button>
           <label className="fx-btn-g flex items-center justify-center gap-2 py-2 text-[12.5px] cursor-pointer">
             <Upload size={13} /> بازیابیِ تنظیمات
-            <input type="file" accept="application/json" onChange={importConfig} className="hidden" disabled={!!busy} />
+            <input type="file" accept="application/json" onChange={importConfig} className="hidden" disabled={!!busy || restoreUnknown} />
           </label>
         </div>
       )}

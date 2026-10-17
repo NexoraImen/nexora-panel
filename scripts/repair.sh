@@ -188,8 +188,8 @@ npm install --no-fund --no-audit --loglevel=error > "$BUILD_LOG" 2>&1
 npm run build >> "$BUILD_LOG" 2>&1
 RC=$?
 
-JSFILE=$(ls -1 dist/assets/*.js 2>/dev/null | head -1)
-if [ -n "$JSFILE" ]; then JSSIZE=$(stat -c%s "$JSFILE" 2>/dev/null || echo 0); else JSSIZE=0; fi
+# Count all chunks: the first sorted file may only be a disabled-feature stub.
+JSSIZE=$(wc -c dist/assets/*.js 2>/dev/null | awk 'END {print $1+0}')
 
 if [ $RC -eq 0 ] && [ -f dist/index.html ] && [ "$JSSIZE" -gt 50000 ]; then
   rm -rf dist.prev

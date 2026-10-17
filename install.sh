@@ -7,7 +7,13 @@
 
 set -o pipefail
 
-VERSION="1.2.0"
+if [ "${1:-}" = "--prepare" ] && [ "$#" -eq 1 ]; then
+  exec bash "$(dirname "${BASH_SOURCE[0]}")/scripts/install-prepare.sh"
+elif [ "$#" -ne 0 ]; then
+  echo "Usage: bash install.sh [--prepare]" >&2
+  exit 2
+fi
+
 INSTALL_DIR="/opt/nexora-panel"
 SSL_DIR="/etc/nginx/ssl"
 
@@ -23,6 +29,12 @@ info() { echo -e "  ${C_LBLUE}i${C_RESET} $1"; }
 step() { echo ""; echo -e "${C_BOLD}${C_CYAN}▸ $1${C_RESET}"; }
 die()  { bad "$1"; echo ""; exit 1; }
 
+# The issuer selects a Pro bundle by VERSION; never stamp an older literal here.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+VERSION=$(cat "$SCRIPT_DIR/VERSION") || die "Cannot read the release VERSION file."
+[[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][a-zA-Z0-9.-]+)?$ ]] \
+  || die "Invalid release VERSION; use a complete release package."
+
 clear
 echo ""
 echo -e "${C_BLUE}   ╔═══════════════════════════════════════════════╗${C_RESET}"
@@ -37,7 +49,6 @@ echo ""
 
 [ "$EUID" -ne 0 ] && die "Must run as root.  Try:  sudo bash install.sh"
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 [ ! -d "$SCRIPT_DIR/backend" ] && die "backend/ not found. Run from inside the project folder."
 
 # ═══════════════════ STEP 1 — Configuration ═══════════════════
@@ -191,7 +202,6 @@ if [ "$SCRIPT_DIR" != "$INSTALL_DIR" ]; then
     rm -f /tmp/nexora-cfg-keep.json
   fi
 fi
-echo "$VERSION" > "$INSTALL_DIR/VERSION"
 ok "Files deployed to $INSTALL_DIR"
 
 # ═══════════════════ STEP 4 — Backend ═══════════════════

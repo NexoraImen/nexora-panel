@@ -28,6 +28,44 @@ The installer asks:
 It then installs the backend, bot and panel under `/opt/nexora-panel`, sets up nginx and
 systemd services, builds the panel, and installs the `nexora` command.
 
+### Preparing beside an active 3x-ui server
+
+For migration to a host that already serves customers, use the preparation mode
+instead of the ordinary installer:
+
+```bash
+sudo bash install.sh --prepare
+```
+
+Use a clean Git checkout of the intended release. Only committed files are
+deployed; untracked local files and source `data/` are not transferred.
+This mode installs prerequisites, builds the frontend with same-origin API calls,
+creates an application venv, and prepares systemd units under `/opt/nexora-panel`.
+It refuses an existing destination or registered Nexora service. APT plans that
+upgrade or remove installed packages are refused; needrestart is suspended for
+this invocation. If necessary, a checksum-verified official Node 24 toolchain is
+installed separately under `/opt/nexora-toolchain`, leaving system Node intact.
+
+**Preparation does not activate the panel.** Neither Nexora service is started or
+enabled. The nginx site is saved as `/opt/nexora-panel/nginx-prepared.conf`, outside
+active nginx includes. Its eventual web listener is `127.0.0.1:18080`, proxying the
+backend at `127.0.0.1:8100`. Installing the nginx package may start its default
+HTTP server; preparation refuses an occupied port 80 when nginx is absent.
+No XUI database/template, XUI service, tunnel, firewall, DNS or cron change is
+requested by the preparation script. The ordinary installer retains its existing
+behavior; these guarantees apply only to `--prepare`.
+
+Before activation, verify the backup and destination XUI mapping, securely set
+the admin password, and resolve the destination license. Both units require
+`data/auth.json` and `data/activation-approved`; do not create the approval marker
+before these checks. Keep the old customer bot as the sole poller until cutover.
+The admin management bot is disabled in the prepared panel unit. Activation,
+TLS/domain cutover, backup restoration and CLI installation are separate steps.
+
+If preparation fails, it exits nonzero without starting Nexora. Download/build
+failures can leave packages or a partial installation behind; do not rerun over
+that directory or delete it without first checking its contents.
+
 ### The panel's secret address
 
 The admin panel does **not** live at `/` — anyone who opens your domain sees "page not found".
@@ -52,6 +90,11 @@ If the address leaks, rotate it from the panel: settings, tab «پنل، رمز 
 6. Start the bot from the panel.
 
 ## Updating
+
+For the first upgrade from an older CLI that restarts x-ui, use the verified
+2.3.9 CLI to perform the update. The old running updater retains its old behavior
+even if it replaces its own file while updating. Do not run that old updater on
+a busy VPN host expecting the new no-XUI-restart behavior to apply retroactively.
 
 ```bash
 nexora update

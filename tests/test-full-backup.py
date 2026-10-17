@@ -209,6 +209,7 @@ import app as AP                                          # noqa: E402
 
 AP.BOT_DB, AP.BILLING_DB = DATA / "bot.db", DATA / "billing.db"
 AP._svc = lambda action, unit="nexora-bot": (True, "")
+AP._svc_active = lambda unit="nexora-bot": True
 
 
 def call(path, headers=None, method="GET", body=b""):

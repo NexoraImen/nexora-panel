@@ -64,9 +64,10 @@ DIST="$INSTALL_DIR/frontend/dist"
 if [ -f "$DIST/index.html" ]; then
   JSFILE=$(ls -1 "$DIST/assets/"*.js 2>/dev/null | head -1)
   if [ -n "$JSFILE" ]; then
-    JSSIZE=$(stat -c%s "$JSFILE" 2>/dev/null || echo 0)
+    # Match rebuild/repair for editions with small lazy-loaded feature stubs.
+    JSSIZE=$(wc -c "$DIST"/assets/*.js 2>/dev/null | awk 'END {print $1+0}')
     if [ "$JSSIZE" -gt 50000 ]; then
-      ok "Build:        $(basename "$JSFILE") ($((JSSIZE / 1024)) KB)"
+      ok "Build:        JavaScript chunks total $((JSSIZE / 1024)) KB"
     else
       bad "Build:        bundle too small, build was incomplete"
       note_issue

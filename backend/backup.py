@@ -151,14 +151,19 @@ def verify(zip_path, version):
         return manifest
 
 
-def restore(zip_path, data_dir, dbs, version, safety_path, host=""):
+def restore(zip_path, data_dir, dbs, version, safety_path, host="", progress=None, prepare=None):
     """
     Restore a verified backup over the live state. A safety backup of the
     current state is written to `safety_path` first; without it nothing is
     touched, because this overwrites money (payments, wallet balances).
     Returns {"restored": [...], "safety": path}.
     """
+    report = progress or (lambda **state: None)
+    report(phase="verify")
     manifest = verify(zip_path, version)
+    if prepare:
+        prepare()
+    report(phase="safety", total=len(manifest["files"]), completed=0)
     try:
         build(data_dir, dbs, version, safety_path, host=host)
     except Exception as e:
@@ -166,6 +171,7 @@ def restore(zip_path, data_dir, dbs, version, safety_path, host=""):
                           "بازیابی انجام نشد.")
     data_dir = Path(data_dir)
     done = []
+    report(phase="restore", total=len(manifest["files"]), completed=0)
     with zipfile.ZipFile(zip_path) as zf, tempfile.TemporaryDirectory() as tmp:
         for e in manifest["files"]:
             arc = e["path"]
@@ -193,5 +199,6 @@ def restore(zip_path, data_dir, dbs, version, safety_path, host=""):
                     shutil.copyfileobj(f, o)
                 os.replace(part, dest)
             done.append(arc)
+            report(phase="restore", total=len(manifest["files"]), completed=len(done))
     return {"restored": done, "safety": str(safety_path), "from": manifest.get("version"),
             "createdAt": manifest.get("createdAt")}

@@ -3,6 +3,45 @@
 Each entry says what was broken and why, not a list of commits.
 History before 2.0 lives with the 1.x line.
 
+## [2.3.9] - 2026-10-17
+
+### Whole-panel ZIP restores now explain what is happening
+
+Restoring the ZIP downloaded by the panel ran blocking archive and SQLite work
+on the API event loop. The panel appeared frozen and showed only a spinner until
+the request ended. Restore work now runs outside that loop, with live validation,
+safety-copy and file-count updates, elapsed time and a definite completion or
+error. Existing ZIP format and JSON clients remain supported.
+
+Concurrent restores are refused, other API requests receive an explicit temporary
+maintenance response, and health checks remain responsive. A disconnect does not
+cancel or automatically retry a destructive restore: the UI explains that its
+result is unknown. A failed refresh after restoring login settings no longer
+misreports a successful restore as failed. An already-running local sales bot is
+stopped before writes and resumed after success; a stopped destination bot stays
+stopped. Failed restores retain the safety-copy requirement and explain when the
+bot has been left stopped for inspection.
+
+### Release identity and split frontend builds
+
+The installer stamped every installation as 1.2.0 even when its code was newer,
+so licensed servers requested a nonexistent Pro bundle. It now reads the release
+VERSION instead of overwriting it with an old literal, and refuses missing or
+malformed release identity. Build checks count all JavaScript chunks rather than
+rejecting a healthy lazy-loaded build because the first chunk was a tiny feature
+stub; rebuild shares the existing JS/CSS validator used by update and rollback.
+Nexora update and rollback no longer restart x-ui as a side effect. Servers with
+the old updater must first run the new CLI when applying this release.
+
+### Preparation on a host already serving VPN customers
+
+`bash install.sh --prepare` installs prerequisites and builds a clean committed
+checkout without configuring XUI, tunnels, firewall, DNS or cron. It refuses an
+existing Nexora installation and package plans that upgrade/remove installed
+packages. Services and the Nexora nginx site remain inactive pending migration
+checks; installing nginx itself may start its default HTTP site. Activation,
+backup restoration, destination license and domain cutover remain separate steps.
+
 ## [2.3.8] - 2026-10-07
 
 ### The admin group's topics were never made

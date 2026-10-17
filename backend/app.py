@@ -902,6 +902,10 @@ async def _admin_path_gate(request: Request, call_next):
         if not _admin_path_ok(request.headers.get("x-admin-path")):
             # همان پاسخِ مسیرِ ناموجود — نه 401، که بگوید «این‌جا چیزی هست»
             return JSONResponse({"detail": "Not Found"}, status_code=404)
+    if (_FULL_RESTORE_LOCK.locked() and request.url.path.startswith("/api/")
+            and request.url.path not in ("/api/health", "/api/admin/backup/full/restore")):
+        return JSONResponse({"detail": "بازیابی پشتیبان در حال اجراست؛ پس از پایان دوباره تلاش کنید."},
+                            status_code=503, headers={"Retry-After": "5"})
     return await call_next(request)
 
 
@@ -7776,6 +7780,59 @@ def backup_full(x_admin_password: str = Header(...)):
                     headers={"Content-Disposition": f'attachment; filename="{p.name}"'})
 
 
+# shortcut: one uvicorn worker; use host-level coordination before multiple workers.
+_FULL_RESTORE_LOCK = _threading.Lock()
+
+
+def _restore_full_upload(body, progress):
+    import uuid
+    stamp = uuid.uuid4().hex
+    up = safety = None
+    bot_stopped = False
+    was_running = False
+
+    def prepare():
+        nonlocal bot_stopped, was_running
+        was_running = _svc_active()
+        if was_running:
+            progress(phase="stop_bot")
+            ok, why = _svc("stop")
+            if not ok:
+                raise BACKUP.BackupError(f"ربات متوقف نشد ({why})؛ بازیابی شروع نشد.")
+            bot_stopped = True
+
+    try:
+        up = _backup_dir() / f"upload-{stamp}.zip"
+        safety = _backup_dir() / f"before-restore-{stamp}.zip"
+        up.write_bytes(body)
+        out = BACKUP.restore(up, CONFIG_PATH.parent, _backup_dbs(), _panel_version(),
+                             safety, host=_backup_host(), progress=progress, prepare=prepare)
+        out["botRestarted"] = False
+        if was_running:
+            progress(phase="start_bot")
+            ok, why = _svc("start")
+            out["botRestarted"] = ok
+            if not ok:
+                out["botWarning"] = f"اطلاعات بازیابی شد، ولی ربات روشن نشد ({why})."
+        log.info("full restore: %d files from %s", len(out["restored"]), out.get("from"))
+        return out
+    except Exception as e:
+        log.warning("full restore failed; safety copy: %s", safety, exc_info=True)
+        reason = str(e) if isinstance(e, BACKUP.BackupError) else "خطای داخلی؛ گزارش سرور را بررسی کنید."
+        # A restore can fail after earlier files were committed; do not promise rollback.
+        reason += " بازیابی کامل نشد؛ پیش از تلاش دوباره وضعیت و نسخهٔ امن را بررسی کنید."
+        if bot_stopped:
+            reason += " ربات برای جلوگیری از کار روی اطلاعات ناقص خاموش مانده است."
+        raise BACKUP.BackupError(reason) from e
+    finally:
+        try:
+            if up is not None:
+                up.unlink(missing_ok=True)
+        except OSError:
+            log.warning("uploaded backup not removed: %s", up.name, exc_info=True)
+        _FULL_RESTORE_LOCK.release()
+
+
 @app.post("/api/admin/backup/full/restore")
 async def backup_full_restore(request: Request, x_admin_password: str = Header(...)):
     """
@@ -7784,32 +7841,60 @@ async def backup_full_restore(request: Request, x_admin_password: str = Header(.
     backup of its own; without that copy nothing is touched.
     """
     check_auth(x_admin_password)
-    body = await request.body()
-    if not body:
-        raise HTTPException(status_code=400, detail="فایلی فرستاده نشد")
-    up = _backup_dir() / f"upload-{datetime.now():%Y%m%d-%H%M%S}.zip"
-    up.write_bytes(body)
-    safety = _backup_dir() / f"before-restore-{datetime.now():%Y%m%d-%H%M%S}.zip"
+    if not _FULL_RESTORE_LOCK.acquire(blocking=False):
+        raise HTTPException(status_code=409, detail="یک بازیابی در حال اجراست؛ دوباره فایل نفرستید.")
     try:
-        out = BACKUP.restore(up, CONFIG_PATH.parent, _backup_dbs(), _panel_version(),
-                             safety, host=_backup_host())
-    except BACKUP.BackupError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    finally:
+        body = await request.body()
+        if not body:
+            raise HTTPException(status_code=400, detail="فایلی فرستاده نشد")
+    except BaseException:
+        _FULL_RESTORE_LOCK.release()
+        raise
+    from starlette.concurrency import run_in_threadpool
+    if "application/x-ndjson" not in request.headers.get("accept", ""):
         try:
-            up.unlink()
-        except OSError as e:
-            # a stray upload is disk, not data: said, not raised
-            log.warning("uploaded backup %s not removed: %s", up.name, e)
-    # The settings cache and the bot's connections read the old state until
-    # they reopen; restarting the bot is the reliable way. The panel reads
-    # its config from the database on every call.
-    ok, why = _svc("restart")
-    out["botRestarted"] = ok
-    if not ok:
-        out["botWarning"] = f"ربات دوباره راه‌اندازی نشد ({why}); یک‌بار از صفحه‌ی ربات روشنش کنید."
-    log.info("full restore: %d files from %s", len(out["restored"]), out.get("from"))
-    return out
+            return await run_in_threadpool(_restore_full_upload, body, lambda **state: None)
+        except BACKUP.BackupError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+
+    import asyncio
+    from fastapi.responses import StreamingResponse
+    state_lock = _threading.Lock()
+    state = {"phase": "received"}
+
+    def progress(**update):
+        with state_lock:
+            state.update(update)
+
+    def work():
+        try:
+            out = _restore_full_upload(body, progress)
+            progress(phase="complete", result=out)
+        except BACKUP.BackupError as e:
+            progress(phase="failed", message=str(e))
+        except Exception:
+            log.exception("restore worker failed")
+            progress(phase="failed", message="عملیات کامل نشد؛ وضعیت سرور را بررسی کنید.")
+
+    # The worker owns the restore lock even if the browser disconnects.
+    worker = _threading.Thread(target=work, daemon=True)
+    try:
+        worker.start()
+    except BaseException:
+        _FULL_RESTORE_LOCK.release()
+        raise
+
+    async def events():
+        while True:
+            with state_lock:
+                current = dict(state)
+            yield json.dumps(current, ensure_ascii=False) + "\n"
+            if current["phase"] in ("complete", "failed"):
+                return
+            await asyncio.sleep(1)
+
+    return StreamingResponse(events(), media_type="application/x-ndjson",
+                             headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"})
 
 
 @app.get("/api/admin/billing/backup")

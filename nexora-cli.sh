@@ -63,9 +63,10 @@ verify_build() {
     BUILD_WHY="هیچ فایل جاوااسکریپتی در dist/assets نیست"
     return 1
   fi
-  JSZ=$(wc -c < "$JSF" 2>/dev/null || echo 0)
+  # Lazy-loaded builds include tiny feature stubs before the application chunk.
+  JSZ=$(wc -c dist/assets/*.js 2>/dev/null | awk 'END {print $1+0}')
   if [ "${JSZ:-0}" -lt 50000 ]; then
-    BUILD_WHY="باندل جاوااسکریپت فقط ${JSZ} بایت است"
+    BUILD_WHY="JavaScript chunks total only ${JSZ} bytes"
     return 1
   fi
 
@@ -536,7 +537,6 @@ BOTEOF
 
     if curl -s --max-time 5 http://127.0.0.1:8100/api/health 2>/dev/null | grep -q '"ok":true'; then
       ok "Service restarted successfully"
-      systemctl is-active --quiet x-ui && { x-ui restart > /dev/null 2>&1; ok "x-ui restarted"; }
       NEWVER=$(cat "$INSTALL_DIR/VERSION" 2>/dev/null || echo "?")
       rm -rf "$TMP"
       echo ""
@@ -658,9 +658,7 @@ BOTEOF
     [ -d dist ] && rm -rf dist.prev && cp -r dist dist.prev 2>/dev/null
     npm run build > "$LOG" 2>&1
     RC=$?
-    JSFILE=$(ls -1 dist/assets/*.js 2>/dev/null | head -1)
-    JSSIZE=$([ -n "$JSFILE" ] && stat -c%s "$JSFILE" 2>/dev/null || echo 0)
-    if [ $RC -eq 0 ] && [ -f dist/index.html ] && [ "$JSSIZE" -gt 50000 ]; then
+    if [ $RC -eq 0 ] && verify_build; then
       rm -rf dist.prev
       ok "Build successful ($(du -sh dist | cut -f1))"
       systemctl reload nginx 2>/dev/null
@@ -668,7 +666,7 @@ BOTEOF
       echo -e "  ${C_GREEN}${C_BOLD}DONE${C_RESET}  ${C_DIM}Refresh your browser${C_RESET}"
       echo ""
     else
-      bad "Build failed"
+      bad "Build failed${BUILD_WHY:+ — $BUILD_WHY}"
       echo ""
       tail -20 "$LOG" | sed 's/^/      /'
       echo ""
@@ -878,7 +876,6 @@ BOTEOF
     sleep 4
 
     if curl -s --max-time 5 http://127.0.0.1:8100/api/health 2>/dev/null | grep -q '"ok":true'; then
-      systemctl is-active --quiet x-ui && x-ui restart > /dev/null 2>&1
       echo ""
       echo -e "  ${C_GREEN}${C_BOLD}ROLLBACK COMPLETE${C_RESET}   ${C_DIM}$VER → v$TARGETV${C_RESET}"
       echo ""
