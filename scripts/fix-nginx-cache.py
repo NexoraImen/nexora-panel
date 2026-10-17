@@ -77,8 +77,11 @@ def add_proto(text):
     for m in re.finditer(r"([ \t]*)proxy_set_header\s+Host\b[^\n]*\n", text):
         # آیا همین بلوک از قبل هدر را دارد؟ پنجره‌ی کوچک دور خودش،
         # نه کلِ فایل — یک بلوکِ درست نباید بقیه را هم درست جلوه دهد.
-        around = text[max(0, m.start() - 400):m.end() + 400]
-        if "X-Forwarded-Proto" in around:
+        # A nearby healthy location must not hide this location's missing header.
+        start = text.rfind("{", 0, m.start())
+        end = text.find("}", m.end())
+        around = text[start:end if end >= 0 else len(text)]
+        if re.search(r"(?m)^\s*proxy_set_header\s+X-Forwarded-Proto\b", around):
             continue
         out.append(text[pos:m.end()])
         out.append(f"{m.group(1)}{PROTO}\n")
@@ -101,8 +104,9 @@ def main():
     need_cache = "no-store, no-cache" not in text
     need_gzip = "gzip_types" not in text
     text, n_proto = add_proto(text)
+    text, n_transport = add_restore_transport(text)
 
-    if not need_cache and not n_proto and not need_gzip:
+    if not need_cache and not n_proto and not need_gzip and not n_transport:
         print("OK Cache headers, X-Forwarded-Proto and compression already configured")
         return 0
 
@@ -139,6 +143,8 @@ def main():
         done.append(f"X-Forwarded-Proto in {n_proto} block(s)")
     if n_gzip:
         done.append(f"compression in {n_gzip} block(s)")
+    if n_transport:
+        done.append(f"backup upload/stream settings in {n_transport} block(s)")
     summary = ", ".join(done) or "nothing"
 
     # Validate; roll back if broken
@@ -152,13 +158,47 @@ def main():
     except FileNotFoundError:
         print(f"!  nginx not available — {summary} applied but not verified")
         return 0
+    except (OSError, subprocess.TimeoutExpired):
+        shutil.copy2(backup, path)
+        print("X  nginx validation failed; previous configuration restored")
+        return 1
 
-    subprocess.run(["systemctl", "reload", "nginx"], capture_output=True, timeout=20)
+    try:
+        reload = subprocess.run(["systemctl", "reload", "nginx"], capture_output=True, timeout=20)
+        if reload.returncode:
+            raise RuntimeError("nginx reload failed")
+    except (OSError, subprocess.TimeoutExpired, RuntimeError):
+        shutil.copy2(backup, path)
+        print("X  nginx reload failed; previous configuration restored on disk")
+        return 1
     print(f"OK {summary}, nginx reloaded")
     if n_proto:
         print("   The panel can now tell it is on https, so the mini-app")
         print("   address gets recorded the next time you open it.")
     return 0
+
+
+def add_restore_transport(text):
+    """Scope larger uploads to the panel API, leaving other sites untouched."""
+    changed = 0
+    policy = {"client_max_body_size": "256m", "client_body_timeout": "300s",
+              "proxy_read_timeout": "300s", "proxy_send_timeout": "300s",
+              "proxy_buffering": "off"}
+
+    def patch(match):
+        nonlocal changed
+        body = match.group(2)
+        original = body
+        for key, value in policy.items():
+            pattern = rf"(?m)^([ \t]*){key}\s+[^;\n]+;"
+            if re.search(pattern, body):
+                body = re.sub(pattern, lambda m: f"{m[1]}{key} {value};", body)
+            else:
+                body += f"\n        {key} {value};\n"
+        changed += body != original
+        return match.group(1) + body + "}"
+
+    return re.sub(r"(location\s+/api/\s*\{)([^{}]*)\}", patch, text), changed
 
 
 if __name__ == "__main__":

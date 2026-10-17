@@ -3,6 +3,45 @@
 Each entry says what was broken and why, not a list of commits.
 History before 2.0 lives with the 1.x line.
 
+## [2.3.10] - 2026-10-17
+
+### Restore and migration failures now reach the layer that caused them
+
+Fresh nginx configurations left the default upload cap in place, rejecting
+panel-generated ZIPs before the backend saw them. Panel API locations now accept
+up to 256 MiB, allow slow uploads and stream restore progress without buffering.
+Existing installs receive the same policy through the update repair. Invalid
+configuration and reload failures are reported, with the previous file restored.
+The backend and browser enforce the same ZIP limit rather than accepting an
+unbounded upload. Larger archives remain supported by the server-side restore CLI.
+
+Restoring a database with the same configuration version could keep the old
+process cache, making restored settings appear missing. Configuration and schema
+assumptions are now invalidated after a restore attempt. Existing destination
+license identity and clock state stay paired with its signed license instead of
+being overwritten by another server's backup.
+
+An empty bot database could display owner-not-found errors before Telegram was
+reachable. Owner initialization is now serialized and works offline. Existing
+resellers without an owner are never reassigned to a guessed account.
+
+An explicitly empty API origin now means same-origin instead of the customer's
+localhost. Fresh installation and legacy matching-origin upgrades use that mode;
+subscription templates use the actual installed HTTP/HTTPS protocol. The public
+subscription page visibly indicates when dedicated configuration could not load.
+Template deployment failures are reported, and the standalone template setup no
+longer restarts x-ui automatically. A healthy nearby nginx block no longer hides
+another block's missing forwarded-protocol header.
+
+### Automatic update settings no longer collide with GitHub workflows
+
+The installer used `.github` as a settings file, although source packages contain
+a directory with that name, then reported success after the failed write. New
+settings use `.nexora-update.conf`; legacy files and custom repositories remain
+supported, and absent settings default to the official repository. Snapshots
+preserve the new file and git ignores it. Verification no longer prints the
+whole settings file, which could contain an access token.
+
 ## [2.3.9] - 2026-10-17
 
 ### Whole-panel ZIP restores now explain what is happening

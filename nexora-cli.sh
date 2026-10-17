@@ -96,6 +96,9 @@ snapshot_to() {
   cp "$INSTALL_DIR/sub-page-index.html" "$SNAP_DEST/" 2>/dev/null
   cp "$INSTALL_DIR/VERSION"            "$SNAP_DEST/" 2>/dev/null
   cp "$INSTALL_DIR/.github"            "$SNAP_DEST/" 2>/dev/null
+  if [ -f "$INSTALL_DIR/.nexora-update.conf" ]; then
+    cp "$INSTALL_DIR/.nexora-update.conf" "$SNAP_DEST/" 2>/dev/null
+  fi
   cp "$INSTALL_DIR/nexora-cli.sh"      "$SNAP_DEST/" 2>/dev/null
 
   cp -r "$INSTALL_DIR/backend" "$SNAP_DEST/backend" 2>/dev/null
@@ -260,23 +263,18 @@ case "$1" in
 
     # اگر فایلی داده نشده، از گیت‌هاب دانلود می‌کنیم
     if [ -z "$ZIP" ]; then
-      if [ -f "$INSTALL_DIR/.github" ]; then
+      # Keep legacy custom repositories/tokens; workflow directories are ignored.
+      UPDATE_CONFIG=""
+      if [ -f "$INSTALL_DIR/.nexora-update.conf" ]; then
+        UPDATE_CONFIG="$INSTALL_DIR/.nexora-update.conf"
+      elif [ -f "$INSTALL_DIR/.github" ]; then
+        UPDATE_CONFIG="$INSTALL_DIR/.github"
+      fi
+      if [ -n "$UPDATE_CONFIG" ]; then
         # shellcheck disable=SC1090
-        source "$INSTALL_DIR/.github"
+        source "$UPDATE_CONFIG" || { bad "Could not load update settings: $UPDATE_CONFIG"; exit 1; }
       fi
-
-      if [ -z "$GITHUB_REPO" ]; then
-        echo -e "  ${C_DIM}Two ways to update:${C_RESET}"
-        echo ""
-        echo -e "  ${C_WHITE}1)${C_RESET} From a local file:"
-        echo -e "     ${C_DIM}nexora update /root/nexora-panel.zip${C_RESET}"
-        echo ""
-        echo -e "  ${C_WHITE}2)${C_RESET} Automatically from GitHub — set it up once:"
-        echo -e "     ${C_DIM}echo 'GITHUB_REPO=\"user/repo\"' > $INSTALL_DIR/.github${C_RESET}"
-        echo -e "     ${C_DIM}then just run:  nexora update${C_RESET}"
-        echo ""
-        exit 1
-      fi
+      GITHUB_REPO="${GITHUB_REPO:-NexoraImen/nexora-panel}"
 
       info "Checking GitHub for the latest release..."
       AUTH_HEADER=""
@@ -335,6 +333,14 @@ case "$1" in
     # 2) Read current settings so we can restore them
     API_URL=$(grep -o 'const SUBPAGE_CONFIG_API = "[^"]*"' "$INSTALL_DIR/sub-page-index.html" 2>/dev/null | head -1 | sed 's/.*= "//;s/"//')
     VITE_URL=$(grep VITE_API_URL "$INSTALL_DIR/frontend/.env" 2>/dev/null | cut -d= -f2)
+    case "$API_URL" in
+      ""|http://localhost*|https://localhost*|http://127.0.0.1*|https://127.0.0.1*)
+        case "$VITE_URL" in
+          http://localhost*|https://localhost*|http://127.0.0.1*|https://127.0.0.1*) ;;
+          http://*|https://*) API_URL="$VITE_URL" ;;
+        esac
+        ;;
+    esac
     SUBPAGE_PATH=$(grep -o 'SUBPAGE_HTML_PATH=[^"]*' /etc/systemd/system/nexora-panel.service 2>/dev/null | cut -d= -f2)
     [ -z "$SUBPAGE_PATH" ] && SUBPAGE_PATH="/root/sub-page/index.html"
     info "Preserving API URL: $API_URL"
@@ -424,9 +430,14 @@ case "$1" in
     fi
 
     # 6) Deploy template
-    cp "$INSTALL_DIR/sub-page-index.html" "$SUBPAGE_PATH"
-    chmod 644 "$SUBPAGE_PATH"
-    ok "Template deployed → $SUBPAGE_PATH"
+    if cp "$INSTALL_DIR/sub-page-index.html" "$SUBPAGE_PATH" && chmod 644 "$SUBPAGE_PATH"; then
+      ok "Template deployed → $SUBPAGE_PATH"
+      case "$API_URL" in
+        ""|*://localhost*|*://127.0.0.1*) warn "Subscription template has no public API origin; its dedicated settings cannot load." ;;
+      esac
+    else
+      warn "Subscription template could not be deployed to $SUBPAGE_PATH; the existing page may still be served."
+    fi
 
     # 7) Rebuild
     #
@@ -435,7 +446,10 @@ case "$1" in
     # کار نکرده — بدون هیچ سرنخی.
     info "Rebuilding admin panel..."
     cd "$INSTALL_DIR/frontend"
-    [ -n "$VITE_URL" ] && echo "VITE_API_URL=$VITE_URL" > .env
+    # Legacy installers baked the panel hostname into both files. Prefer the
+    # current nginx origin after migration, preserving separate custom API hosts.
+    [ "$VITE_URL" = "$API_URL" ] && VITE_URL=""
+    printf 'VITE_API_URL=%s\n' "$VITE_URL" > .env
     export NODE_OPTIONS="--max-old-space-size=1536"
 
     # swap موقت برای سرورهای کم‌حافظه — بدون آن بیلد بی‌صدا کشته می‌شود
@@ -529,8 +543,10 @@ BOTEOF
 
     # هدرهای ضدکش nginx — بدون این، مرورگر بعد از به‌روزرسانی
     # همچنان فایل‌های قدیمی را می‌خواهد
-    [ -f "$INSTALL_DIR/scripts/fix-nginx-cache.py" ] && \
-      python3 "$INSTALL_DIR/scripts/fix-nginx-cache.py" > /dev/null 2>&1
+    if [ -f "$INSTALL_DIR/scripts/fix-nginx-cache.py" ]; then
+      python3 "$INSTALL_DIR/scripts/fix-nginx-cache.py" || \
+        warn "Nginx repair failed; backup uploads may still be blocked. Review the error above."
+    fi
 
     systemctl restart $SERVICE
     sleep 4

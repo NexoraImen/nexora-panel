@@ -126,6 +126,31 @@ Logs:
 nexora logs
 ```
 
+## Automatic update source
+
+`nexora update` uses `NexoraImen/nexora-panel` by default. New installations
+save settings in `/opt/nexora-panel/.nexora-update.conf` (owner-only access).
+Existing `.github` settings files remain supported; `.github/` workflow
+directories are left untouched. When both files exist, the new file takes
+precedence. Preserve custom repository and token settings when changing hosts;
+never share the settings file in diagnostic output.
+
+## Restoring a panel ZIP after migration
+
+The panel API accepts ZIP uploads up to 256 MiB. New installations and the nginx
+repair run during updates configure that limit and unbuffered restore progress.
+A reverse proxy in front of Nexora can impose a smaller independent limit.
+HTTP 413 means that request was rejected before restoration, so increasing the
+correct proxy limit is necessary; importing the same ZIP repeatedly cannot fix it.
+Use `nexora restore /path/to/backup.zip` for larger files.
+
+When the destination already has `license.json`, restoration keeps its existing
+`install_id` and license clock state instead of binding the signed license to a
+different identity. The result lists preserved files. Keep the destination
+activation and verify Pro after restoring; the ZIP does not contain the signed
+license or the foreign issuer's private state. Existing 3x-ui data is not part
+of this archive and must not be replaced by Nexora restoration.
+
 ## Uninstalling
 
 ```bash

@@ -1496,6 +1496,10 @@ export function BackupCard({ password, onRestored }) {
     const file = e.target.files?.[0];
     e.target.value = "";
     if (!file || busy || restoreUnknown) return;
+    if (file.size > 256 * 1024 * 1024) {
+      setMsg({ t: "err", m: "حد مجاز بارگذاری ZIP، ۲۵۶ مگابایت است؛ برای فایل بزرگ‌تر از nexora restore روی سرور استفاده کنید." });
+      return;
+    }
     if (!confirm("همه‌چیزِ پنل (ربات، حسابداری، تنظیمات، رسیدها) با این فایل جایگزین می‌شود. "
       + "پیش از آن یک نسخه از وضعیتِ فعلی روی سرور نگه داشته می‌شود. ادامه می‌دهید؟")) return;
     setBusy("restore"); setMsg(null); setElapsed(0); setRestoreState({ phase: "upload" });
@@ -1508,12 +1512,13 @@ export function BackupCard({ password, onRestored }) {
       } catch {
         throw new RestoreUnknown("ارتباط هنگام ارسال قطع شد؛ نتیجه نامشخص است. پیش از ارسال دوباره، وضعیت سرور را بررسی کنید.");
       }
-      if (res.status === 413) throw new Error("فایل برای وب‌سرور بزرگ است؛ از دستورِ nexora restore روی سرور استفاده کنید.");
+      if (res.status === 413) throw new Error("وب‌سرور بارگذاری را رد کرد و بازیابی شروع نشد. حد مجاز پنل ۲۵۶ مگابایت است؛ اگر فایل کوچک‌تر است، تنظیمات وب‌سرور باید با نسخهٔ جدید اصلاح شود.");
       if (res.status >= 500) throw new RestoreUnknown("سرور پاسخ نهایی نداد؛ نتیجهٔ بازیابی نامشخص است. دوباره فایل نفرستید و وضعیت سرور را بررسی کنید.");
       if (!res.ok) await okJson(res, "بازیابی شروع نشد");
       const j = await readRestore(res, setRestoreState);
       setMsg({ t: j.botWarning ? "err" : "ok",
         m: `بازیابی شد: ${faNum(j.restored.length)} فایل، از پشتیبانِ نسخه‌ی ${j.from || "?"}.`
+          + (j.preserved?.length ? " شناسه و وضعیت مجوزِ همین سرور حفظ شد." : "")
           + (j.botWarning ? ` ${j.botWarning}` : "") });
       try { await onRestored(); }
       catch { setMsg({ t: j.botWarning ? "err" : "ok", m: "بازیابی انجام شد؛ نمایش پنل به‌روز نشد. ممکن است لازم باشد با اطلاعات ورودِ پشتیبان دوباره وارد شوید."

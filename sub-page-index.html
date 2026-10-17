@@ -2080,6 +2080,9 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
 </style>
 </head>
 <body>
+    <div id="nexora-config-warning" role="status" hidden style="text-align:center;padding:12px;direction:rtl">
+        تنظیمات اختصاصی موقتاً دریافت نشد؛ اطلاعات اتصال شما همچنان نمایش داده می‌شود.
+    </div>
     <!-- نشانِ خنثیِ بارگذاری — نه لوگوی نکسورا، نه رنگِ هیچ فروشگاهی -->
     <div class="nx-boot-dot" aria-hidden="true"></div>
     <!-- نورِ محیطی: زیرِ همه چیز، فقط برای عمق -->
@@ -2440,9 +2443,11 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
                     cache: "no-store",
                     headers: { "Cache-Control": "no-cache" }
                 });
-                if (!res.ok) return null;
+                if (!res.ok) throw new Error(`Panel configuration HTTP ${res.status}`);
                 return await res.json();
             } catch (e) {
+                const warning = document.getElementById('nexora-config-warning');
+                if (warning) warning.hidden = false;
                 console.warn("پنل مدیریتی در دسترس نبود، از تنظیمات پیش‌فرض استفاده می‌شود.", e);
                 return null;
             }

@@ -128,7 +128,7 @@ if [ -f "$XUI_DB" ]; then
     SET=$(sqlite3 "$XUI_DB" "SELECT value FROM settings WHERE key='subThemeDir';" 2>/dev/null)
     if [ "$SET" = "$DEST_DIR/" ]; then
       ok "subThemeDir set to $SET"
-      systemctl restart x-ui > /dev/null 2>&1 && ok "x-ui restarted"
+      info "x-ui was not restarted. If it caches templates, activate during a planned restart."
     else
       warn "Could not write subThemeDir automatically"
       info "Set it manually in the 3x-ui panel to: $DEST_DIR/"

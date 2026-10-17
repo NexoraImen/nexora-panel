@@ -3,6 +3,7 @@ import ast
 import asyncio
 import json
 import logging
+import sqlite3
 from pathlib import Path
 import sys
 import tempfile
@@ -75,6 +76,8 @@ class RestoreProgress(unittest.IsolatedAsyncioTestCase):
                        JSONResponse=JSONResponse, _threading=threading, json=json,
                        CONFIG_PATH=self.data / "config.json", BACKUP=B,
                        _FULL_RESTORE_LOCK=self.lock, log=logging.getLogger("restore-test"),
+                       _CFG_CACHE={"version": 1, "json": "stale"}, _CFG_READY=True,
+                       _CFG_LOCAL=threading.local(),
                        _backup_dir=lambda: self.data, _backup_dbs=lambda: {},
                        _panel_version=lambda: "2.3.8", _backup_host=lambda: "test",
                        _svc_active=lambda: False,
@@ -212,9 +215,9 @@ class RestoreProgress(unittest.IsolatedAsyncioTestCase):
             return {"restored": [], "from": "2.3.8"}
 
         request = types.SimpleNamespace(headers={"accept": "application/x-ndjson"})
-        async def body():
-            return self.body
-        request.body = body
+        async def stream():
+            yield self.body
+        request.stream = stream
         with patch.object(B, "restore", slow):
             try:
                 response = await self.ns["backup_full_restore"](request, "pw")
@@ -243,6 +246,80 @@ class RestoreProgress(unittest.IsolatedAsyncioTestCase):
         self.assertIn("خاموش", response.json()["detail"])
         self.assertEqual(self.actions, ["stop"])
         self.assertFalse(self.lock.locked())
+
+    async def test_upload_limit_releases_lock_before_restore(self):
+        with patch.object(B, "MAX_UPLOAD", 3), patch.object(B, "restore") as restore:
+            response = await self.post(body=b"too large")
+        self.assertEqual(response.status_code, 413)
+        restore.assert_not_called()
+        self.assertFalse(self.lock.locked())
+
+    async def test_restore_invalidates_configuration_and_schema_cache(self):
+        old = self.ns["_CFG_LOCAL"]
+        response = await self.post()
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(self.ns["_CFG_CACHE"], {"version": None, "json": None})
+        self.assertFalse(self.ns["_CFG_READY"])
+        self.assertIsNot(self.ns["_CFG_LOCAL"], old)
+
+    async def test_partial_failure_also_invalidates_cache(self):
+        with patch.object(B, "restore", side_effect=B.BackupError("partial write")):
+            response = await self.post()
+        self.assertEqual(response.status_code, 400)
+        self.assertIsNone(self.ns["_CFG_CACHE"]["version"])
+
+    async def test_same_version_database_returns_restored_config(self):
+        source = self.data / "source"
+        source.mkdir()
+        live = self.data / "bot.db"
+        for db, brand in ((live, "old"), (source / "bot.db", "restored")):
+            con = sqlite3.connect(db)
+            try:
+                con.execute('CREATE TABLE panel_config (id INTEGER PRIMARY KEY, body TEXT, version INTEGER)')
+                con.execute('INSERT INTO panel_config VALUES (1,?,7)', (json.dumps({"brand": brand}),))
+                con.commit()
+            finally:
+                con.close()
+        B.build(source, {}, "2.3.8", self.archive)
+        self.body = self.archive.read_bytes()
+        self.ns["_backup_dbs"] = lambda: {"bot.db": live}
+        self.ns["_CFG_CACHE"] = {"version": 7, "json": '{"brand":"old"}'}
+
+        def row():
+            con = sqlite3.connect(live)
+            try:
+                return con.execute('SELECT body,version FROM panel_config WHERE id=1').fetchone()
+            finally:
+                con.close()
+
+        self.ns.update(config_version=lambda: row()[1], _cfg_raw=row,
+                       _normalize_config=lambda stored: stored)
+        node = next(n for n in TREE.body if isinstance(n, ast.FunctionDef) and n.name == "load_config")
+        exec(compile(ast.Module(body=[node], type_ignores=[]), "load-config", "exec"), self.ns)
+        self.assertEqual(self.ns["load_config"]()["brand"], "old")
+        response = await self.post()
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(self.ns["load_config"]()["brand"], "restored")
+
+    async def test_destination_license_identity_stays_with_signed_license(self):
+        (self.data / "install_id").write_text("source-identity")
+        (self.data / "license_state.json").write_text('{"last_seen":1}')
+        B.build(self.data, {}, "2.3.8", self.archive)
+        (self.data / "install_id").write_text("destination-identity")
+        (self.data / "license_state.json").write_text('{"last_seen":2}')
+        (self.data / "license.json").write_text("destination signed license")
+        result = B.restore(self.archive, self.data, {}, "2.3.8", self.data / "safe.zip")
+        self.assertEqual((self.data / "install_id").read_text(), "destination-identity")
+        self.assertEqual((self.data / "license_state.json").read_text(), '{"last_seen":2}')
+        self.assertEqual(set(result["preserved"]), {"install_id", "license_state.json"})
+
+    async def test_unactivated_destination_restores_identity_as_before(self):
+        (self.data / "install_id").write_text("source-identity")
+        B.build(self.data, {}, "2.3.8", self.archive)
+        (self.data / "install_id").write_text("destination-identity")
+        result = B.restore(self.archive, self.data, {}, "2.3.8", self.data / "safe.zip")
+        self.assertEqual((self.data / "install_id").read_text(), "source-identity")
+        self.assertEqual(result["preserved"], [])
 
 
 if __name__ == "__main__":

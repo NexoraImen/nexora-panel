@@ -14,6 +14,7 @@ __pycache__/
 *.pyc
 
 # Runtime data — never commit these
+.nexora-update.conf
 #
 # مخزن عمومی است. bot.db از قبل این‌جا بود، ولی billing.db (نرخ‌ها،
 # پرداخت‌ها) و x-ui.db (ایمیل و کانفیگ مشتری‌ها) نبودند — و هر دو

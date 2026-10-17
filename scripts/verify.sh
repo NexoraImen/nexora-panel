@@ -30,8 +30,11 @@ echo
 VER=$(cat VERSION 2>/dev/null || echo "?")
 ok "Installed version: $VER"
 
-REPO=$(cat .github 2>/dev/null || echo "")
-[ -n "$REPO" ] && info "Update source: $REPO"
+# Settings may contain a private token; never print the whole file.
+UPDATE_CONFIG=".nexora-update.conf"
+[ -f "$UPDATE_CONFIG" ] || UPDATE_CONFIG=".github"
+REPO=$(sed -n 's/^[[:space:]]*GITHUB_REPO=//p' "$UPDATE_CONFIG" 2>/dev/null | head -1 | tr -d '\"\047\r' | grep -oE '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+')
+info "Update source: ${REPO:-NexoraImen/nexora-panel}"
 
 # ── the stylesheet ──
 echo

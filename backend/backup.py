@@ -32,6 +32,7 @@ DBS = ("bot.db", "billing.db", "tunnels.db")
 
 #: A zip that unpacks to more than this is not ours.
 MAX_UNPACKED = 4 * 1024 ** 3
+MAX_UPLOAD = 256 * 1024 ** 2
 
 
 class BackupError(Exception):
@@ -171,10 +172,18 @@ def restore(zip_path, data_dir, dbs, version, safety_path, host="", progress=Non
                           "بازیابی انجام نشد.")
     data_dir = Path(data_dir)
     done = []
+    # The signed destination license is not in the archive. Its identity must
+    # stay paired with it when importing business data from another server.
+    preserve = {"install_id", "license_state.json"} if (data_dir / "license.json").is_file() else set()
+    kept = []
     report(phase="restore", total=len(manifest["files"]), completed=0)
     with zipfile.ZipFile(zip_path) as zf, tempfile.TemporaryDirectory() as tmp:
         for e in manifest["files"]:
             arc = e["path"]
+            if arc in preserve and (data_dir / arc).is_file():
+                kept.append(arc)
+                report(phase="restore", total=len(manifest["files"]), completed=len(done) + len(kept))
+                continue
             if arc in DBS:
                 live = Path(dbs.get(arc) or data_dir / arc)
                 live.parent.mkdir(parents=True, exist_ok=True)
@@ -199,6 +208,6 @@ def restore(zip_path, data_dir, dbs, version, safety_path, host="", progress=Non
                     shutil.copyfileobj(f, o)
                 os.replace(part, dest)
             done.append(arc)
-            report(phase="restore", total=len(manifest["files"]), completed=len(done))
+            report(phase="restore", total=len(manifest["files"]), completed=len(done) + len(kept))
     return {"restored": done, "safety": str(safety_path), "from": manifest.get("version"),
-            "createdAt": manifest.get("createdAt")}
+            "createdAt": manifest.get("createdAt"), "preserved": kept}

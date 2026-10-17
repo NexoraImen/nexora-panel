@@ -8,7 +8,8 @@ import {
   Activity, AlertTriangle, Apple, Bell, Bot, Clock, Coins, CreditCard, Database, DollarSign, Eye, FileText, Gift, HelpCircle, Key, Layers, LayoutGrid, Link2, MessageCircle, MessageSquare, Monitor, Megaphone, Network, Package, Power, Send, Server, ShieldCheck, Sliders, Smartphone, Tag, TrendingUp, Users, Video, Wallet, XCircle, Zap,
 } from "lucide-react";
 
-export const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8100";
+// An explicitly empty URL means the nginx origin, not the customer's localhost.
+export const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8100";
 
 export const OS_TABS = [
   { key: "android", label: "اندروید", icon: Smartphone },

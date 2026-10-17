@@ -152,6 +152,11 @@ server {
     location / { try_files \$uri /index.html; }
     location /api/ {
         proxy_pass http://127.0.0.1:8100;
+        client_max_body_size 256m;
+        client_body_timeout 300s;
+        proxy_read_timeout 300s;
+        proxy_send_timeout 300s;
+        proxy_buffering off;
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-Proto \$scheme;

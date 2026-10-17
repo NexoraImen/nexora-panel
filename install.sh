@@ -303,7 +303,7 @@ ok "Backend running on port 8100"
 # ═══════════════════ STEP 7 — Frontend ═══════════════════
 step "Building admin panel"
 cd "$INSTALL_DIR/frontend"
-echo "VITE_API_URL=https://$PANEL_DOMAIN" > .env
+printf 'VITE_API_URL=\n' > .env
 
 # Give Node enough heap; Vite + lucide-react needs headroom on small VPS
 export NODE_OPTIONS="--max-old-space-size=1536"
@@ -409,6 +409,11 @@ server {
     location / { try_files \$uri /index.html; }
     location /api/ {
         proxy_pass http://127.0.0.1:8100;
+        client_max_body_size 256m;
+        client_body_timeout 300s;
+        proxy_read_timeout 300s;
+        proxy_send_timeout 300s;
+        proxy_buffering off;
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
         # بدون این، بک‌اند نمی‌داند پنل روی https باز شده — TLS این‌جا
@@ -492,13 +497,17 @@ $IP_RULE
     }
     location /api/ {
         proxy_pass http://127.0.0.1:8100;
+        client_max_body_size 256m;
+        client_body_timeout 300s;
+        proxy_read_timeout 300s;
+        proxy_send_timeout 300s;
+        proxy_buffering off;
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
         # بدون این، بک‌اند نمی‌داند پنل روی https باز شده — TLS این‌جا
         # تمام می‌شود و درخواست به شکل http به uvicorn می‌رسد. اولین
         # قربانی‌اش ثبتِ خودکار آدرس مینی‌اپ بود که هیچ‌وقت انجام نشد.
         proxy_set_header X-Forwarded-Proto \$scheme;
-        proxy_read_timeout 60s;
     }
 }
 EOF
@@ -529,19 +538,28 @@ $IP_RULE
     }
     location /api/ {
         proxy_pass http://127.0.0.1:8100;
+        client_max_body_size 256m;
+        client_body_timeout 300s;
+        proxy_read_timeout 300s;
+        proxy_send_timeout 300s;
+        proxy_buffering off;
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
         # بدون این، بک‌اند نمی‌داند پنل روی https باز شده — TLS این‌جا
         # تمام می‌شود و درخواست به شکل http به uvicorn می‌رسد. اولین
         # قربانی‌اش ثبتِ خودکار آدرس مینی‌اپ بود که هیچ‌وقت انجام نشد.
         proxy_set_header X-Forwarded-Proto \$scheme;
-        proxy_read_timeout 60s;
     }
 }
 EOF
 fi
 
 nginx -t > /dev/null 2>&1 || die "nginx config test failed. Run:  nginx -t"
+# The subscription page may be served from another origin; use the protocol
+# actually configured above, while the admin panel uses same-origin requests.
+TEMPLATE_PROTO="http"; [ "$SSL_READY" = true ] && TEMPLATE_PROTO="https"
+sed -i "s|const SUBPAGE_CONFIG_API = \"[^\"]*\"|const SUBPAGE_CONFIG_API = \"$TEMPLATE_PROTO://$PANEL_DOMAIN\"|" \
+  "$INSTALL_DIR/sub-page-index.html" "$SUBPAGE_DIR/index.html"
 systemctl reload nginx
 ok "nginx configured"
 [ -n "$ALLOW_IP" ] && ok "Access restricted to $ALLOW_IP"
@@ -608,10 +626,13 @@ if [ -d "$INSTALL_DIR/bot" ] && [ -f /etc/systemd/system/nexora-bot.service ]; t
 fi
 
 # Enable automatic updates from GitHub
-if [ ! -f "$INSTALL_DIR/.github" ]; then
-  echo 'GITHUB_REPO="NexoraImen/nexora-panel"' > "$INSTALL_DIR/.github"
-  chmod 600 "$INSTALL_DIR/.github"
-  ok "Auto-update enabled — run 'nexora update' anytime"
+if [ ! -e "$INSTALL_DIR/.nexora-update.conf" ] && [ ! -f "$INSTALL_DIR/.github" ]; then
+  # .github is the workflow directory in source checkouts, not a settings file.
+  if (umask 077; echo 'GITHUB_REPO="NexoraImen/nexora-panel"' > "$INSTALL_DIR/.nexora-update.conf"); then
+    ok "Auto-update enabled — run 'nexora update' anytime"
+  else
+    warn "Could not save update settings; the CLI will use the official repository by default"
+  fi
 fi
 
 if systemctl is-active --quiet x-ui 2>/dev/null; then

@@ -2082,12 +2082,7 @@ def bot_inbounds_set(payload: dict, x_admin_password: str = Header(...)):
                 raise HTTPException(status_code=404, detail="نماینده پیدا نشد")
             target = int(tid)
         else:
-            row = con.execute("SELECT id FROM tenants WHERE parent_id IS NULL "
-                              "ORDER BY id LIMIT 1").fetchone()
-            if not row:
-                raise HTTPException(status_code=400,
-                                    detail="مستاجر ریشه پیدا نشد")
-            target = int(row["id"])
+            target = int(_root_tenant_row()["id"])
 
         cur = con.execute(
             "UPDATE tenants SET inbound_mode=?, inbound_ids=? WHERE id=?",
@@ -2921,17 +2916,27 @@ def _root_tenant_row():
     می‌شود و بی‌صدا به ردیفِ اشتباه می‌رسیم. قاعده‌ی مخزن است و تستِ
     درز اجرایش می‌کند.
     """
-    con = _bot_conn()
-    if not con:
-        raise HTTPException(status_code=503, detail="دیتابیس ربات در دسترس نیست")
+    ready, why = _ensure_bot_db()
+    if not ready:
+        raise HTTPException(status_code=503, detail=why or "دیتابیس ربات در دسترس نیست")
+    con = _bot_rw()
     try:
-        r = con.execute(
-            "SELECT * FROM tenants WHERE parent_id IS NULL "
-            "ORDER BY id LIMIT 1").fetchone()
+        query = ("SELECT * FROM tenants WHERE parent_id IS NULL "
+                 "ORDER BY id LIMIT 1")
+        r = con.execute(query).fetchone()
+        if r:
+            return dict(r)
+        # Fresh installations must work before Telegram is reachable. Never
+        # reassign existing resellers to a guessed owner after an incomplete import.
+        con.execute("BEGIN IMMEDIATE")
+        con.execute("INSERT INTO tenants (name, is_active, credit) "
+                    "SELECT 'Nexora',1,-1 WHERE NOT EXISTS (SELECT 1 FROM tenants)")
+        r = con.execute(query).fetchone()
+        con.commit()
     finally:
         con.close()
     if not r:
-        raise HTTPException(status_code=404, detail="مستاجر ریشه پیدا نشد")
+        raise HTTPException(status_code=409, detail="اطلاعات مالک در دیتابیس ربات نیست؛ بازیابی پشتیبان را کامل کنید. اطلاعات نماینده‌ها تغییر نکرده است.")
     return dict(r)
 
 
@@ -3305,19 +3310,7 @@ def brand_logo_get(x_admin_password: str = Header(...)):
     صاحبِ پنل به آن نمی‌رسید.
     """
     check_auth(x_admin_password)
-    con = _bot_conn()
-    if not con:
-        raise HTTPException(status_code=503, detail="دیتابیس ربات در دسترس نیست")
-    try:
-        # هیچ‌وقت `LIMIT 1` بدون شرط: ردیفِ مالک اگر یک‌بار پاک و
-        # دوباره ساخته شود، شناسه‌اش از نماینده بزرگ‌تر می‌شود.
-        r = con.execute(
-            "SELECT id, name FROM tenants "
-            "WHERE parent_id IS NULL ORDER BY id LIMIT 1").fetchone()
-    finally:
-        con.close()
-    if not r:
-        raise HTTPException(status_code=404, detail="مستاجر ریشه پیدا نشد")
+    r = _root_tenant_row()
     return {"id": r["id"], "name": r["name"] or "",
             "logo": _logo_url(r["id"])}
 
@@ -3661,7 +3654,10 @@ def bot_settings_get(x_admin_password: str = Header(...)):
             return {"ready": False, "tenant": None,
                     "error": f"خواندن تنظیمات ناموفق: {str(e)[:150]}"}
         if not row:
-            return {"ready": True, "tenant": None}
+            try:
+                row = _root_tenant_row()
+            except HTTPException as e:
+                return {"ready": False, "tenant": None, "error": e.detail}
 
         t = dict(row)
         # توکن‌ها را ماسک می‌کنیم — در پاسخ کامل نمی‌فرستیم
@@ -3726,10 +3722,7 @@ def bot_settings_put(payload: dict, x_admin_password: str = Header(...)):
 
         name = (payload.get("name") or "Nexora").strip()
         if not row:
-            cur = con.execute(
-                "INSERT INTO tenants (name, is_active, credit) VALUES (?,1,-1)", (name,)
-            )
-            tid = cur.lastrowid
+            tid = _root_tenant_row()["id"]
         else:
             tid = row["id"]
 
@@ -7825,6 +7818,11 @@ def _restore_full_upload(body, progress):
             reason += " ربات برای جلوگیری از کار روی اطلاعات ناقص خاموش مانده است."
         raise BACKUP.BackupError(reason) from e
     finally:
+        # Restored databases can have the same version number but different data.
+        # A partially restored DB also invalidates cached schema assumptions.
+        _CFG_CACHE.update(version=None, json=None)
+        globals()["_CFG_READY"] = False
+        globals()["_CFG_LOCAL"] = _threading.local()
         try:
             if up is not None:
                 up.unlink(missing_ok=True)
@@ -7844,7 +7842,11 @@ async def backup_full_restore(request: Request, x_admin_password: str = Header(.
     if not _FULL_RESTORE_LOCK.acquire(blocking=False):
         raise HTTPException(status_code=409, detail="یک بازیابی در حال اجراست؛ دوباره فایل نفرستید.")
     try:
-        body = await request.body()
+        body = bytearray()
+        async for chunk in request.stream():
+            if len(body) + len(chunk) > BACKUP.MAX_UPLOAD:
+                raise HTTPException(status_code=413, detail="حجم ZIP بیشتر از ۲۵۶ مگابایت است؛ از nexora restore روی سرور استفاده کنید.")
+            body.extend(chunk)
         if not body:
             raise HTTPException(status_code=400, detail="فایلی فرستاده نشد")
     except BaseException:

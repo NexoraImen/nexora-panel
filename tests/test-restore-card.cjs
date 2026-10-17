@@ -39,13 +39,14 @@ async function main() {
   const tick = () => new Promise(resolve => setTimeout(resolve, 0));
   const push = event => controller.enqueue(new TextEncoder().encode(JSON.stringify(event) + "\n"));
   let root;
-  async function mount() {
+  async function mount(fileSize = 3) {
     if (root) await act(async () => root.unmount());
     root = createRoot(document.getElementById("root"));
     await act(async () => root.render(React.createElement(BackupCard,
       { password: "test", onRestored: async () => { refreshes++; throw new Error("auth changed"); } })));
     const input = document.querySelector('input[accept=".zip,application/zip"]');
     Object.defineProperty(input, "files", { configurable: true, value: [new dom.window.File(["zip"], "backup.zip")] });
+    Object.defineProperty(input.files[0], "size", { value: fileSize });
     await act(async () => { input.dispatchEvent(new dom.window.Event("change", { bubbles: true })); await tick(); });
     return input;
   }
@@ -67,8 +68,18 @@ async function main() {
   assert.match(document.body.textContent, /نامشخص/);
   assert.equal(second.disabled, true);
   assert.equal(refreshes, 1);
+  context.fetch = async () => new Response('too large', { status: 413 });
+  const rejected = await mount();
+  assert.match(document.body.textContent, /بازیابی شروع نشد/);
+  assert.equal(rejected.disabled, false);
+  let uploads = 0;
+  context.fetch = async () => { uploads++; throw new Error("must not upload"); };
+  const oversized = await mount(256 * 1024 * 1024 + 1);
+  assert.match(document.body.textContent, /۲۵۶ مگابایت/);
+  assert.equal(uploads, 0);
+  assert.equal(oversized.disabled, false);
   await act(async () => root.unmount());
   dom.window.close();
-  console.log("2 restore card journeys passed (live progress, refresh failure, unknown result)");
+  console.log("4 restore card journeys passed (progress, unknown result, HTTP 413, upload size limit)");
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });
