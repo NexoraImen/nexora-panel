@@ -3,6 +3,39 @@
 Each entry says what was broken and why, not a list of commits.
 History before 2.0 lives with the 1.x line.
 
+## [2.3.11] - 2026-10-18
+
+### Automatic connectivity for restricted networks
+
+Telegram could remain unreachable on Iran installations even when the panel
+itself worked. Activated installations can now receive short-lived managed
+access from the provider and automatically route selected Telegram/GitHub HTTPS
+requests through a constrained WSS relay when direct connectivity fails. The
+System page shows each network path and provides a recheck without customer
+proxy addresses, ports or SSH credentials. Bot token validation remains separate.
+
+The local agent binds only to loopback. It preserves destination TLS verification
+and does not change XUI, customer VPN traffic, host routes or firewall settings.
+Provider setup requires a reachable dedicated TLS hostname and a separately
+configured foreign relay; this release does not provision that infrastructure
+automatically. License endpoints and initial package sources must remain reachable.
+Managed connectivity requires Python 3.9 or newer.
+
+Official public release metadata is cached on the relay so customers do not share
+one unauthenticated GitHub API quota for every update check. Access credentials
+are excluded from panel ZIP backups. Installation, staged preparation, update,
+rollback and removal handle the independent connection service consistently.
+
+### GitHub settings match the updater
+
+Four panel API callers still read the legacy `.github` path after the CLI moved
+to `.nexora-update.conf`. Source installs with a workflow directory therefore
+appeared unconfigured. The panel now shares modern-file precedence, legacy-file
+fallback and the official repository default. Settings saves are atomic, validate
+repository names and retain same-repository credentials without returning them.
+Network failures are shown separately from missing settings. Telegram network
+errors no longer repeat URLs that can contain bot tokens.
+
 ## [2.3.10] - 2026-10-17
 
 ### Restore and migration failures now reach the layer that caused them

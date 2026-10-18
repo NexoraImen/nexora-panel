@@ -50,7 +50,8 @@ case $name in
   python3)
     mkdir "$3" "$3/bin"
     printf '#!/bin/bash\nexit 0\n' > "$3/bin/pip"
-    chmod +x "$3/bin/pip" ;;
+    printf '#!/bin/bash\nprintf "connect-prepare %%s\\n" "$*" >> "$TEST_LOG"\nexit 0\n' > "$3/bin/python"
+    chmod +x "$3/bin/pip" "$3/bin/python" ;;
   curl)
     while [[ $# -gt 0 ]]; do
       if [[ $1 == -o ]]; then

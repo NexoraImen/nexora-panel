@@ -7,6 +7,23 @@
 INSTALL_DIR="${NEXORA_DIR:-/opt/nexora-panel}"
 SERVICE="nexora-panel"
 
+# Only the selected Telegram/GitHub hosts use Nexora's local bridge.
+curl() {
+  if [ -x "$INSTALL_DIR/backend/venv/bin/python" ] && [ -f "$INSTALL_DIR/scripts/net-curl.py" ] && [ -f "$INSTALL_DIR/backend/connectivity.py" ]; then
+    "$INSTALL_DIR/backend/venv/bin/python" "$INSTALL_DIR/scripts/net-curl.py" "$@"
+  else
+    command curl "$@"
+  fi
+}
+
+sync_connect() {
+  if [ -f "$INSTALL_DIR/scripts/install-connect.py" ] && [ -f "$INSTALL_DIR/backend/connectivity.py" ]; then
+    "$INSTALL_DIR/backend/venv/bin/python" "$INSTALL_DIR/scripts/install-connect.py" --root "$INSTALL_DIR" || return 1
+  elif [ -f /etc/systemd/system/nexora-connect.service ] && grep -q '^# Managed by Nexora: selective outbound connectivity$' /etc/systemd/system/nexora-connect.service; then
+    systemctl disable --now nexora-connect || return 1
+  fi
+}
+
 C_RESET='\033[0m'; C_BLUE='\033[38;5;33m'; C_LBLUE='\033[38;5;39m'
 C_CYAN='\033[38;5;45m'; C_GREEN='\033[38;5;41m'; C_RED='\033[38;5;196m'
 C_YELLOW='\033[38;5;220m'; C_GRAY='\033[38;5;245m'; C_WHITE='\033[38;5;255m'
@@ -100,6 +117,9 @@ snapshot_to() {
     cp "$INSTALL_DIR/.nexora-update.conf" "$SNAP_DEST/" 2>/dev/null
   fi
   cp "$INSTALL_DIR/nexora-cli.sh"      "$SNAP_DEST/" 2>/dev/null
+  if [ -d "$INSTALL_DIR/scripts" ]; then
+    cp -r "$INSTALL_DIR/scripts" "$SNAP_DEST/scripts"
+  fi
 
   cp -r "$INSTALL_DIR/backend" "$SNAP_DEST/backend" 2>/dev/null
   rm -rf "$SNAP_DEST/backend/venv" "$SNAP_DEST/backend/__pycache__" 2>/dev/null
@@ -503,7 +523,8 @@ case "$1" in
 
     # 8) Restart
     cd "$INSTALL_DIR/backend"
-    ./venv/bin/pip install -r requirements.txt -q > /dev/null 2>&1
+    ./venv/bin/pip install -r requirements.txt -q > /dev/null 2>&1 || { bad "Backend dependencies failed; check network access and retry"; exit 1; }
+    sync_connect || { bad "Managed connection service setup failed"; exit 1; }
 
     # ربات: وابستگی‌ها و سرویس (اگر ماژول موجود باشد)
     if [ -d "$INSTALL_DIR/bot" ]; then
@@ -798,6 +819,9 @@ BOTEOF
     [ -f "$TARGET/VERSION" ] && cp "$TARGET/VERSION" "$INSTALL_DIR/"
 
     # CLI هم باید به همان نسخه برگردد
+    if [ -d "$TARGET/scripts" ]; then
+      cp -r "$TARGET/scripts/." "$INSTALL_DIR/scripts/"
+    fi
     if [ -f "$TARGET/nexora-cli.sh" ]; then
       cp "$TARGET/nexora-cli.sh" "$INSTALL_DIR/"
       chmod +x "$INSTALL_DIR/nexora-cli.sh"
@@ -885,7 +909,8 @@ BOTEOF
 
     # --- Restart ---
     cd "$INSTALL_DIR/backend"
-    ./venv/bin/pip install -r requirements.txt -q > /dev/null 2>&1
+    ./venv/bin/pip install -r requirements.txt -q > /dev/null 2>&1 || { bad "Backend dependencies failed; check network access and retry"; exit 1; }
+    sync_connect || { bad "Managed connection service setup failed"; exit 1; }
     systemctl restart $SERVICE
     systemctl is-enabled --quiet nexora-bot 2>/dev/null && systemctl restart nexora-bot 2>/dev/null
     ROLL_DOWN=""        # از این‌جا به بعد سرویس‌ها بالا هستند

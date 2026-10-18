@@ -86,6 +86,7 @@ INST = TMP / "nexora"
 (INST / "backend" / "__pycache__").mkdir(parents=True)
 (INST / "bot" / "__pycache__").mkdir(parents=True)
 (INST / "frontend" / "src" / "sections").mkdir(parents=True)
+(INST / "scripts").mkdir()
 
 FILES = {
     "data/config.json": '{"brand":"nexora"}',
@@ -99,6 +100,7 @@ FILES = {
     "nexora-cli.sh": "#!/bin/bash",
     "backend/app.py": "print(1)",
     "backend/requirements.txt": "fastapi",
+    "scripts/nexora-connect.py": "# connection agent",
     "backend/venv/pyvenv.cfg": "junk",
     "backend/__pycache__/app.pyc": "junk",
     "bot/handlers.py": "print(2)",
@@ -127,7 +129,7 @@ check("تابع بدون خطا اجرا می‌شود", r.returncode == 0,
 
 MUST = ["config.json", "auth.json", "bot.db", "billing.db", "tunnels.db",
         "sub-page-index.html", "VERSION", ".github", "nexora-cli.sh",
-        "FROM_VERSION", "backend/app.py", "backend/requirements.txt",
+        "FROM_VERSION", "backend/app.py", "backend/requirements.txt", "scripts/nexora-connect.py",
         "bot/handlers.py", "frontend/package.json", "frontend/.env",
         "frontend/src/App.jsx", "frontend/src/sections/billing.jsx"]
 

@@ -8,8 +8,12 @@
 import json
 import time
 import logging
+import sys
+from pathlib import Path
 
 import requests
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from backend import connectivity as NET
 
 log = logging.getLogger("nexora.tg")
 
@@ -49,7 +53,7 @@ class Bot:
         self.token = token
         self.timeout = timeout
         self.poll_timeout = poll_timeout
-        self._session = requests.Session()
+        self._session = NET.session()
         # نگه‌داشتن اتصال باز: هر فراخوانی جدید دست‌دادن TLS دوباره
         # انجام نمی‌دهد. روی مسیر پرتأخیر، همین بیشترین صرفه‌جویی است.
         try:
@@ -129,7 +133,8 @@ class Bot:
                 raise TelegramError(desc, code)
 
             except requests.RequestException as e:
-                last_err = e
+                # Network exceptions may embed the bot token in their URL.
+                last_err = type(e).__name__
                 net_tries += 1
                 time.sleep(1.5 * (attempt + 1))
 

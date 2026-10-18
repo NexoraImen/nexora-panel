@@ -5,7 +5,6 @@
 # ═══════════════════════════════════════════════════════════════
 
 INSTALL_DIR="/opt/nexora-panel"
-SERVICE="nexora-panel"
 
 C_RESET='\033[0m'; C_BLUE='\033[38;5;33m'; C_LBLUE='\033[38;5;39m'
 C_CYAN='\033[38;5;45m'; C_GREEN='\033[38;5;41m'; C_RED='\033[38;5;196m'
@@ -31,7 +30,7 @@ echo ""
 
 # ── What will be removed ──
 echo -e "  ${C_WHITE}This will remove:${C_RESET}"
-echo -e "  ${C_GRAY}├─${C_RESET} Backend service  ${C_DIM}(nexora-panel)${C_RESET}"
+echo -e "  ${C_GRAY}├─${C_RESET} Panel, bot and managed connection services"
 echo -e "  ${C_GRAY}├─${C_RESET} Admin panel files  ${C_DIM}($INSTALL_DIR)${C_RESET}"
 echo -e "  ${C_GRAY}├─${C_RESET} nginx site config"
 echo -e "  ${C_GRAY}├─${C_RESET} nexora CLI command"
@@ -85,6 +84,7 @@ fi
 
 # ── Stop and remove service ──
 step "Removing service"
+for SERVICE in nexora-panel nexora-bot nexora-connect; do
 if systemctl is-active --quiet $SERVICE 2>/dev/null; then
   systemctl stop $SERVICE
   ok "Service stopped"
@@ -98,6 +98,7 @@ if [ -f "/etc/systemd/system/$SERVICE.service" ]; then
   systemctl daemon-reload
   ok "Service file removed"
 fi
+done
 
 # ── nginx ──
 step "Removing nginx configuration"

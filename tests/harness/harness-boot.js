@@ -11815,6 +11815,11 @@ var D_CODES = { ready: true,
                denials: {"mini_app": "«مینی‌اپ تلگرام» در این مجوز نیست.", "loyalty": "«سکه، دعوت و بازگرداندن مشتری» در این مجوز نیست.", "affiliates": "«همکاری در فروش» در این مجوز نیست.", "resellers": "«پنل نمایندگی» در این مجوز نیست.", "accounting": "«حسابداری واسطه‌ها» در این مجوز نیست.", "diagnostics": "«عیب‌یابی اتصال و امنیت» در این مجوز نیست.", "insights": "«قیف فروش و نظرسنجی» در این مجوز نیست.", "channel": "«ارسال به کانال» در این مجوز نیست.", "monitoring_multi": "«مانیتورینگ چند سرور» در این مجوز نیست.", "subpage_templates": "«قالب‌های صفحه اشتراک» در این مجوز نیست."},
                pro_loaded: true, pro_error: "" };
     }
+    if (u.indexOf("/admin/connectivity/check") >= 0) return { ok: true };
+    if (u.indexOf("/admin/connectivity") >= 0) return {
+      state: "connected", ready: true, checked: Date.now() / 1000,
+      services: { telegram: "managed", github: "direct" }
+    };
     if (u.indexOf("/admin/system") >= 0) {
       return { build: { built: true, stale: false, builtAt: "2026-09-24T18:42:10", note: null },
                version: "1.93.0",

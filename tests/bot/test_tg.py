@@ -139,8 +139,7 @@ head("خطای شبکه سه بار، بعد تسلیم")
 
 import requests as _rq  # noqa: E402
 
-b = bot_with([_rq.ConnectionError("قطع"), _rq.ConnectionError("قطع"),
-              _rq.ConnectionError("قطع")])
+b = bot_with([_rq.ConnectionError("https://api.telegram.org/botTEST_SECRET/sendMessage")] * 3)
 SLEPT.clear()
 err = None
 try:
@@ -149,6 +148,7 @@ except T.TelegramError as e:
     err = e
 check("خطای شبکه گزارش می‌شود", err and "شبکه" in str(err), str(err)[:60])
 check("سه بار تلاش شده", b._session.calls == 3, f"{b._session.calls} درخواست")
+check("Network error never exposes the bot token", err and "TEST_SECRET" not in str(err))
 
 b = bot_with([_rq.ConnectionError("قطع"), OK])
 check("و یک قطعی گذرا پیام را نمی‌اندازد",

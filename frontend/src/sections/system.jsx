@@ -175,8 +175,8 @@ export function GithubCard({ password }) {
         <Github size={15} style={{ color: "var(--accent-2)" }} /> مخزن به‌روزرسانی
       </div>
       <p className="text-[13px] mb-4 leading-relaxed" style={{ color: "var(--muted)" }}>
-        وقتی مخزن را وصل کنید، پنل نسخه‌های جدید را از Releases گیت‌هاب می‌گیرد
-        و به‌روزرسانی از همین‌جا انجام می‌شود.
+        مخزن رسمی به‌صورت پیش‌فرض انتخاب شده است. پنل نسخه‌های جدید را از Releases
+        گیت‌هاب بررسی می‌کند؛ دسترسی شبکه به گیت‌هاب هم باید برقرار باشد.
       </p>
 
       <Field label="آدرس مخزن" hint="مثلاً username/nexora — یا لینک کامل گیت‌هاب">
@@ -211,7 +211,7 @@ export function GithubCard({ password }) {
       {saved ? (
         <div className="flex items-center gap-2 text-[13px]" style={{ color: "var(--ok)" }}>
           <CheckCircle2 size={13} />
-          متصل به{" "}
+          مخزن انتخاب‌شده:{" "}
           <a href={`https://github.com/${saved}`} target="_blank" rel="noreferrer"
             dir="ltr" className="underline"
             style={{ color: "var(--accent-2)", fontFamily: "var(--mono)" }}>
@@ -494,15 +494,15 @@ export function UpdateCard({ password }) {
         {!updating && !checkErr && !info?.configured && !checking && (
           <div className="rounded-xl p-4" style={{ background: "var(--surface-3)", border: "1px solid var(--border)" }}>
             <p className="text-[13px] mb-2.5" style={{ color: "var(--dim)" }}>
-              برای فعال‌سازی به‌روزرسانی خودکار، این دستور را روی سرور اجرا کنید:
+              مخزن به‌روزرسانی را در بخش «مخزن به‌روزرسانی» همین صفحه بررسی کنید.
             </p>
             <code dir="ltr" className="block px-3 py-2.5 rounded-lg text-[13px]"
               style={{ background: "#05070C", border: "1px solid var(--border-2)", color: "var(--accent-2)",
                        fontFamily: "var(--mono)", wordBreak: "break-all" }}>
-              echo 'GITHUB_REPO="NexoraImen/nexora-panel"' &gt; /opt/nexora-panel/.github
+              NexoraImen/nexora-panel
             </code>
             <p className="text-[12px] mt-2" style={{ color: "var(--muted)" }}>
-              سپس <span dir="ltr" style={{ fontFamily: "var(--mono)" }}>nexora restart</span> را بزنید.
+              مخزن رسمی در نسخهٔ جدید، پیش‌فرض است و برای انتخاب آن نیازی به ری‌استارت نیست.
             </p>
           </div>
         )}
@@ -553,6 +553,50 @@ export function UpdateCard({ password }) {
   );
 }
 
+export function ConnectivityCard({ password }) {
+  const [state, setState] = useState(null);
+  const [error, setError] = useState("");
+  const [checking, setChecking] = useState(false);
+  const labels = { direct: "اتصال مستقیم", managed: "از مسیر مدیریت‌شدهٔ نکسورا", unavailable: "مسیر در دسترس نیست", waiting: "در انتظار بررسی" };
+  useEffect(() => {
+    let active = true;
+    const load = async () => {
+      try {
+        const res = await fetch(`${API_URL}/api/admin/connectivity`, { headers: { "X-Admin-Password": password } });
+        const data = await okJson(res, "خواندن وضعیت اتصال ناموفق بود");
+        if (active) { setState(data); setError(""); }
+      } catch (e) { if (active) setError(e.message); }
+    };
+    load();
+    const timer = setInterval(load, 10000);
+    return () => { active = false; clearInterval(timer); };
+  }, [password]);
+  const check = async () => {
+    setChecking(true);
+    try {
+      const res = await fetch(`${API_URL}/api/admin/connectivity/check`, { method: "POST", headers: { "X-Admin-Password": password } });
+      await okJson(res, "ثبت بررسی اتصال ناموفق بود");
+      setError("");
+    } catch (e) { setError(e.message); }
+    finally { setChecking(false); }
+  };
+  return <div className="fx-card p-5 mb-4">
+    <div className="flex items-center justify-between gap-3 mb-3">
+      <h3 className="text-[14px] font-semibold">اتصال بین‌الملل</h3>
+      <button className="fx-btn" disabled={checking} onClick={check}>{checking ? "ثبت بررسی…" : "بررسی دوباره"}</button>
+    </div>
+    <p className="text-[13px] mb-3" style={{ color: "var(--muted)" }}>مسیر شبکهٔ ربات و به‌روزرسانی به‌صورت خودکار بررسی می‌شود. اعتبار توکن ربات را در بخش ربات بررسی کنید.</p>
+    {error && <Msg msg={{ t: "err", m: error }} />}
+    <div aria-live="polite" className="text-[13px] space-y-2">
+      {[ ["telegram", "تلگرام"], ["github", "گیت‌هاب"] ].map(([key, label]) => <div key={key} className="flex justify-between gap-3"><span>{label}</span><span>{labels[state?.services?.[key]] || "در انتظار بررسی"}</span></div>)}
+      {state?.state === "provider_unconfigured" && <p style={{ color: "var(--warn)" }}>خروجی مدیریت‌شده هنوز توسط ارائه‌دهنده آماده نشده است.</p>}
+      {state?.state === "waiting_for_license" && <p style={{ color: "var(--muted)" }}>برای دریافت مسیر مدیریت‌شده، مجوز را فعال کنید.</p>}
+      {state?.state === "agent_unavailable" && <p style={{ color: "var(--warn)" }}>عامل اتصال گزارش تازه‌ای نداده است؛ سرویس اتصال نیاز به بررسی دارد.</p>}
+      {state?.state === "expired" && <p style={{ color: "var(--warn)" }}>دسترسی خروجی منقضی شده است؛ مجوز را تازه‌سازی کنید.</p>}
+    </div>
+  </div>;
+}
+
 export function SystemSection({ password }) {
   const [sys, setSys] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -587,6 +631,7 @@ export function SystemSection({ password }) {
       {sysErr && <Msg msg={{ t: "err", m: sysErr }} />}
 
       <LicenseCard password={password} />
+      <ConnectivityCard password={password} />
 
       {/* وضعیت */}
       <div className="fx-g4 grid grid-cols-4 gap-3 mb-4">

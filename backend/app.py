@@ -9,7 +9,10 @@ import time
 import logging
 import urllib.error
 import urllib.request
+import sys
 from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from backend import connectivity as NET
 from datetime import datetime, timedelta
 from fastapi import (FastAPI, HTTPException, Header, Request, Response,
                      Depends)
@@ -1687,6 +1690,34 @@ def system_info(x_admin_password: str = Header(...)):
     }
 
 
+def _github_repo(repo):
+    if not _re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9_.-]+", repo) or repo.split("/")[-1] in (".", ".."):
+        raise HTTPException(status_code=400, detail="قالب مخزن نامعتبر است؛ قالب درست username/repository است.")
+    return repo
+
+
+def _github_settings():
+    """Same precedence as the CLI; a source checkout's .github/ is not settings."""
+    import shlex
+    values = {key: os.getenv(key, "") for key in ("GITHUB_REPO", "GITHUB_TOKEN")}
+    for name in (".nexora-update.conf", ".github"):
+        path = _root_dir() / name
+        if not path.is_file():
+            continue
+        try:
+            lexer = shlex.shlex(path.read_text(encoding="utf-8"), posix=True,
+                                punctuation_chars=";")
+            lexer.whitespace_split = True
+            for item in lexer:
+                key, sep, value = item.partition("=")
+                if sep and key in values:
+                    values[key] = value
+        except (OSError, ValueError):
+            raise HTTPException(status_code=503, detail="فایل تنظیمات به‌روزرسانی خوانده نشد؛ تنظیمات مخزن را بررسی کنید.")
+        break
+    return _github_repo(values["GITHUB_REPO"] or "NexoraImen/nexora-panel"), values["GITHUB_TOKEN"]
+
+
 @app.get("/api/admin/check-update")
 def check_update(x_admin_password: str = Header(...)):
     """
@@ -1704,27 +1735,7 @@ def check_update(x_admin_password: str = Header(...)):
         except OSError as _exc:
             log.warning("check_update read: %s", _exc)
 
-    # خواندن مخزن از فایل .github (اگر نصب‌کننده آن را ساخته باشد)
-    repo, token = None, None
-    gh = root / ".github"
-    if gh.exists():
-        try:
-            for line in gh.read_text(encoding="utf-8").splitlines():
-                if line.startswith("GITHUB_REPO="):
-                    repo = line.split("=", 1)[1].strip().strip('"').strip("'")
-                elif line.startswith("GITHUB_TOKEN="):
-                    token = line.split("=", 1)[1].strip().strip('"').strip("'")
-        except OSError as _exc:
-            log.warning("check_update read: %s", _exc)
-
-    if not repo:
-        return {
-            "currentVersion": current,
-            "latestVersion": None,
-            "updateAvailable": False,
-            "configured": False,
-            "message": "به‌روزرسانی خودکار تنظیم نشده است",
-        }
+    repo, token = _github_settings()
 
     try:
         import urllib.request
@@ -1736,7 +1747,7 @@ def check_update(x_admin_password: str = Header(...)):
         if token:
             req.add_header("Authorization", f"token {token}")
 
-        with urllib.request.urlopen(req, timeout=12) as resp:
+        with NET.urlopen(req, timeout=12) as resp:
             data = json.load(resp)
 
         latest = (data.get("tag_name") or "").lstrip("v")
@@ -1766,7 +1777,7 @@ def check_update(x_admin_password: str = Header(...)):
             "latestVersion": None,
             "updateAvailable": False,
             "configured": True,
-            "error": str(e)[:200],
+            "error": f"HTTP {e.code}" if isinstance(e, urllib.error.HTTPError) else type(e).__name__,
             "message": "ارتباط با گیت‌هاب برقرار نشد",
         }
 
@@ -1782,9 +1793,7 @@ def run_update(x_admin_password: str = Header(...)):
     """
     check_auth(x_admin_password)
 
-    root = Path(__file__).resolve().parent.parent
-    if not (root / ".github").exists():
-        raise HTTPException(status_code=400, detail="به‌روزرسانی خودکار تنظیم نشده است")
+    _github_settings()
     _run_cli_detached("update")
     return {
         "ok": True,
@@ -4935,10 +4944,10 @@ def _announce_admin_path():
             req = urllib.request.Request(
                 f"https://api.telegram.org/bot{t['bot_token']}/sendMessage",
                 data=body, headers={"Content-Type": "application/json"})
-            with urllib.request.urlopen(req, timeout=15) as r:
+            with NET.urlopen(req, timeout=15) as r:
                 r.read()
         except Exception as e:
-            log.warning("نشانیِ پنل به %s نرسید: %s", cid, e)
+            log.warning("Admin address announcement failed for %s: %s", cid, type(e).__name__)
 
 
 @app.on_event("startup")
@@ -5013,11 +5022,26 @@ def _license_view():
             "pro_error": globals().get("PRO_ERROR", "")}
 
 
+@app.get("/api/admin/connectivity")
+def connectivity_get(_=Depends(check_auth)):
+    return NET.status()
+
+
+@app.post("/api/admin/connectivity/check")
+def connectivity_check(_=Depends(check_auth)):
+    NET.write("connect-recheck.json", {"at": time.time()})
+    return {"ok": True, "message": "بررسی اتصال در صف قرار گرفت."}
+
+
 def _license_install(resp):
     doc = resp.get("license") if isinstance(resp, dict) else None
     st, why = LIC.install(doc)
     if why:
         raise HTTPException(502, detail=f"مجوز نصب نشد: {_LIC_WHY_FA.get(why, why)}")
+    try:
+        NET.install(resp.get("connectivity"), LIC.fingerprint())
+    except (ValueError, OSError):
+        log.error("Managed connection grant could not be installed; license remains valid")
     LIC.note_refresh(True)
     return _license_view()
 
@@ -5099,13 +5123,14 @@ def license_deactivate(_=Depends(check_auth)):
     if err:
         raise HTTPException(502, detail=f"غیرفعال نشد، مجوز همین‌جا ماند: {err}")
     LIC.remove()
+    NET.remove()
     return _license_view()
 
 
 def _license_loop():
     while True:
         try:
-            if LIC.refresh_due():
+            if LIC.refresh_due() or (LIC.status().get("pro") and NET.lease_due()):
                 _, err = _license_refresh()
                 if err:
                     log.warning("license refresh failed: %s", err)
@@ -5576,7 +5601,7 @@ def bot_receipt(order_id: int, x_admin_password: str = Header(None)):
         import requests
         from fastapi.responses import Response as FastResponse
 
-        r = requests.get(f"https://api.telegram.org/bot{token}/getFile",
+        r = NET.request("GET", f"https://api.telegram.org/bot{token}/getFile",
                          params={"file_id": row["receipt_file"]}, timeout=15)
         d = r.json()
         if not d.get("ok"):
@@ -5584,7 +5609,7 @@ def bot_receipt(order_id: int, x_admin_password: str = Header(None)):
                                 detail="تلگرام فایل را برنگرداند")
 
         path = d["result"]["file_path"]
-        img = requests.get(f"https://api.telegram.org/file/bot{token}/{path}",
+        img = NET.request("GET", f"https://api.telegram.org/file/bot{token}/{path}",
                            timeout=25)
         if img.status_code != 200:
             raise HTTPException(status_code=502, detail="دریافت تصویر ناموفق بود")
@@ -5778,20 +5803,20 @@ def _message_user(tid, tg_id, payload):
         req = urllib.request.Request(
             f"https://api.telegram.org/bot{token}/sendMessage",
             data=body, headers={"Content-Type": "application/json"})
-        with urllib.request.urlopen(req, timeout=15) as r:
+        with NET.urlopen(req, timeout=15) as r:
             res = json.loads(r.read().decode("utf-8"))
     except urllib.error.HTTPError as e:
         try:
             err = json.loads(e.read().decode("utf-8")).get("description", "")
         except Exception:
-            err = str(e)
+            err = f"HTTP {e.code}"
         # پرتکرارترین حالت: کاربر ربات را بلاک کرده — این خطای ما نیست
         if "blocked" in err.lower() or "deactivated" in err.lower():
             raise HTTPException(status_code=409,
                                 detail="کاربر ربات را بلاک کرده یا حسابش حذف شده")
         raise HTTPException(status_code=400, detail=f"تلگرام: {err[:200]}")
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"ارسال ناموفق: {str(e)[:160]}")
+        raise HTTPException(status_code=502, detail=f"ارسال ناموفق: {type(e).__name__}")
 
     if not res.get("ok"):
         raise HTTPException(status_code=400,
@@ -6021,16 +6046,8 @@ def bot_test_connection(payload: dict, x_admin_password: str = Header(...)):
 def github_get(x_admin_password: str = Header(...)):
     """تنظیمات مخزن گیت‌هاب برای به‌روزرسانی."""
     check_auth(x_admin_password)
-    f = _root_dir() / ".github"
-    repo = ""
-    if f.exists():
-        try:
-            for line in f.read_text(encoding="utf-8").splitlines():
-                if line.startswith("GITHUB_REPO="):
-                    repo = line.split("=", 1)[1].strip().strip('"').strip("'")
-        except Exception as _exc:
-            log.warning("reading github repo file: %s", _exc)
-    return {"repo": repo, "configured": bool(repo)}
+    repo, _ = _github_settings()
+    return {"repo": repo, "configured": True}
 
 
 @app.put("/api/admin/github")
@@ -6042,32 +6059,30 @@ def github_put(payload: dict, x_admin_password: str = Header(...)):
     یک آدرس اشتباه ذخیره نکند و بعد در به‌روزرسانی گیر کند.
     """
     check_auth(x_admin_password)
-    repo = (payload or {}).get("repo", "").strip()
+    raw = (payload or {}).get("repo", "")
+    if not isinstance(raw, str):
+        raise HTTPException(status_code=400, detail="آدرس مخزن باید متن باشد")
+    repo = raw.strip()
 
     # نرمال‌سازی: از URL کامل هم قبول می‌کنیم
-    repo = repo.replace("https://github.com/", "").replace("http://github.com/", "")
+    repo = repo.removeprefix("https://github.com/").removeprefix("http://github.com/")
     repo = repo.rstrip("/").removesuffix(".git")
 
-    if not repo:
-        f = _root_dir() / ".github"
-        try:
-            f.unlink(missing_ok=True)
-        except Exception as _exc:
-            log.warning("github token file cleanup: %s", _exc)
-        return {"ok": True, "repo": "", "configured": False}
+    reset = not repo
+    repo = _github_repo(repo or "NexoraImen/nexora-panel")
 
-    if repo.count("/") != 1 or not all(repo.split("/")):
-        raise HTTPException(status_code=400,
-                            detail="قالب درست: username/repository")
-
-    # بررسی واقعی
+    previous, saved_token = _github_settings()
+    token = saved_token if previous == repo and not reset else ""
+    # Validate before replacing the existing settings or credentials.
     try:
         import urllib.request
         req = urllib.request.Request(
             f"https://api.github.com/repos/{repo}/releases/latest",
             headers={"Accept": "application/vnd.github+json",
                      "User-Agent": "nexora-panel"})
-        with urllib.request.urlopen(req, timeout=12) as r:
+        if token:
+            req.add_header("Authorization", f"token {token}")
+        with NET.urlopen(req, timeout=12) as r:
             data = json.loads(r.read().decode())
         tag = data.get("tag_name", "")
     except urllib.error.HTTPError as e:
@@ -6077,17 +6092,26 @@ def github_put(payload: dict, x_admin_password: str = Header(...)):
                 detail=f"مخزن «{repo}» پیدا نشد یا هیچ Release ندارد. "
                        "مطمئن شوید عمومی است و حداقل یک Release ساخته‌اید.")
         raise HTTPException(status_code=400, detail=f"گیت‌هاب پاسخ نداد: {e.code}")
-    except Exception as e:
+    except Exception:
         raise HTTPException(status_code=400,
-                            detail=f"بررسی مخزن ناموفق: {str(e)[:120]}")
+                            detail="ارتباط با گیت‌هاب برقرار نشد؛ تنظیمات قبلی تغییر نکرد.")
 
-    f = _root_dir() / ".github"
-    f.write_text(f'GITHUB_REPO="{repo}"\n', encoding="utf-8")
+    import shlex
+    import tempfile
+    temporary = None
     try:
-        os.chmod(f, 0o600)
-    except Exception as e:
-        # توکنِ گیت‌هاب در این فایل است
-        log.warning("could not restrict %s to 0600: %s", f, e)
+        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=_root_dir(),
+                                         prefix=".nexora-update.conf.", delete=False) as f:
+            temporary = Path(f.name)
+            f.write(f"GITHUB_REPO={shlex.quote(repo)}\n")
+            if token:
+                f.write(f"GITHUB_TOKEN={shlex.quote(token)}\n")
+        os.replace(temporary, _root_dir() / ".nexora-update.conf")
+    except OSError:
+        raise HTTPException(status_code=500, detail="ذخیرهٔ تنظیمات مخزن ناموفق بود؛ تنظیمات قبلی حفظ شد.")
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
 
     return {"ok": True, "repo": repo, "configured": True, "latestTag": tag}
 
@@ -8527,11 +8551,11 @@ def _group_alert(text, owner_if_no_group=True):
         req = urllib.request.Request(
             f"https://api.telegram.org/bot{r['bot_token']}/sendMessage",
             data=json.dumps(msg).encode(), headers={"Content-Type": "application/json"})
-        urllib.request.urlopen(req, timeout=12)
+        NET.urlopen(req, timeout=12)
         return True
     except Exception as e:
-        # توکن در آدرس است؛ فقط نوع و متنِ کوتاهِ خطا، نه URL
-        log.warning("health alert not sent: %s: %s", type(e).__name__, str(e)[:160])
+        # Telegram URLs contain tokens; exception text can repeat the URL.
+        log.warning("health alert not sent: %s", type(e).__name__)
         return False
 
 
@@ -9277,7 +9301,7 @@ def _tg_get_me(token, timeout=10):
     import urllib.error
     url = f"https://api.telegram.org/bot{token}/getMe"
     try:
-        with urllib.request.urlopen(url, timeout=timeout) as r:
+        with NET.urlopen(url, timeout=timeout) as r:
             data = json.loads(r.read().decode("utf-8", "replace"))
     except urllib.error.HTTPError as e:
         if e.code == 401:

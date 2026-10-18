@@ -210,6 +210,7 @@ cd "$INSTALL_DIR/backend"
 python3 -m venv venv > /dev/null 2>&1 || die "Failed to create virtualenv"
 ./venv/bin/pip install --upgrade pip -q > /dev/null 2>&1
 ./venv/bin/pip install -r requirements.txt -q > /dev/null 2>&1 || die "pip install failed"
+"$INSTALL_DIR/backend/venv/bin/python" "$INSTALL_DIR/scripts/install-connect.py" --root "$INSTALL_DIR" || die "Managed connection service setup failed"
 ok "Python environment ready"
 
 # ═══════════════════ STEP 5 — Template ═══════════════════

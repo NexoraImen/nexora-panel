@@ -151,6 +151,24 @@ activation and verify Pro after restoring; the ZIP does not contain the signed
 license or the foreign issuer's private state. Existing 3x-ui data is not part
 of this archive and must not be replaced by Nexora restoration.
 
+## International connectivity
+
+Managed connectivity requires Python 3.9 or newer. Ubuntu 22.04+ provides a
+compatible system Python; Ubuntu 20.04's default Python 3.8 is insufficient.
+
+The System page reports the Telegram and GitHub network paths and offers a fresh
+check. Activated installations automatically receive managed access when the
+provider has enabled it. Customers enter no proxy hostname, port or SSH key.
+The independent `nexora-connect` service listens only on loopback, prefers direct
+access, and routes selected Telegram/GitHub HTTPS traffic through the provider
+when necessary. It does not change XUI traffic, host routes or firewall rules.
+
+Initial installation still needs access to the package sources, and activation
+and renewal need the license endpoints. The provider's relay hostname must be
+reachable from Iran over HTTPS. Network readiness does not validate a bot token;
+use the bot section for that check. Connectivity credentials are excluded from
+panel ZIP backups and are renewed for the destination installation.
+
 ## Uninstalling
 
 ```bash

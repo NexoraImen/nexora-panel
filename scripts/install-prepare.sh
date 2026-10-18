@@ -19,7 +19,7 @@ command -v git >/dev/null || die "Git is required; run from a clean release chec
 git -C "$SOURCE" rev-parse --verify HEAD >/dev/null
 git -C "$SOURCE" diff --quiet HEAD -- || die "Source has tracked edits; use a clean release checkout."
 [[ ! -e $DEST && ! -L $DEST ]] || die "$DEST already exists; preparation never overwrites an installation."
-for unit in nexora-panel nexora-bot nexora; do
+for unit in nexora-panel nexora-bot nexora nexora-connect; do
   [[ ! -e $UNITS/$unit.service && ! -L $UNITS/$unit.service ]] \
     || die "Existing $unit.service; preparation refused."
   [[ $(systemctl show "$unit.service" -p LoadState --value) == not-found ]] \
@@ -102,6 +102,8 @@ fi
   chmod a+rx "$DEST/frontend"
   chmod -R a+rX dist
 )
+
+"$DEST/backend/venv/bin/python" "$DEST/scripts/install-connect.py" --root "$DEST" --unit-out "$WORK/nexora-connect.service"
 
 for unit in nexora-panel nexora-bot; do
   if [[ $unit == nexora-panel ]]; then
