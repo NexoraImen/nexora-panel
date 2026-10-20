@@ -17,6 +17,7 @@
  */
 import { API_URL } from "./constants";
 import { errText } from "./format";
+import { hydrateMedia } from './private-media';
 
 async function req(path, headers, { method = "GET", body } = {}) {
   const res = await fetch(`${API_URL}${path}`, {
@@ -26,7 +27,7 @@ async function req(path, headers, { method = "GET", body } = {}) {
   });
   const j = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(errText(j.detail, "درخواست ناموفق بود"));
-  return j;
+  return hydrateMedia(j, headers);
 }
 
 /** تنظیماتِ خوانده‌شده همیشه یک دیکشنری است، هر چه برگشته باشد. */

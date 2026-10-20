@@ -391,8 +391,10 @@ class Ctx:
             return None
         return self._send_staff(gid, tpid, topic, text, keyboard, photo, retry=True)
 
-    def _send_staff(self, gid, tpid, topic, text, keyboard, photo, retry):
+    def _send_staff(self, gid, tpid, topic, text, keyboard, photo, retry, document=None, raise_errors=False):
         try:
+            if document:
+                return self.bot.send_doc_bytes(gid, document[0], filename=document[1], topic_id=tpid)
             if photo:
                 return self.bot.send_photo_bytes(
                     gid, photo, filename="photo.jpg",
@@ -403,13 +405,17 @@ class Ctx:
                     topic_id=tpid)
             return self.bot.send(gid, text, keyboard=keyboard,
                                  topic_id=tpid)
-        except TelegramError as e:
+        except Exception as e:
             # someone deleted the topic: make it again and send there, once
-            if retry and tpid and "thread not found" in str(e).lower():
+            if (retry and tpid and type(e).__name__ == 'TelegramError'
+                    and getattr(e, 'code', None) in (None, 400) and "thread not found" in str(e).lower()):
                 key = TOPIC_ALIAS.get(topic, topic)
                 self.forget_topic(key)
-                return self._send_staff(gid, self.topic_id(gid, key), topic, text, keyboard, photo, retry=False)
-            log.warning("ارسال به گروه ناموفق: %s", e)
+                return self._send_staff(gid, self.topic_id(gid, key), topic, text, keyboard, photo,
+                                        retry=False, document=document, raise_errors=raise_errors)
+            if raise_errors:
+                raise
+            log.warning("staff notification failed: %s", type(e).__name__)
             return None
 
 
@@ -1323,6 +1329,12 @@ def wallet_purchase(ctx, user, plan_id, renew_sub_id=None,
     price = pr["final"]
 
     fresh = ctx.db.get_user(user["tg_id"])
+    held_order = ctx.db.q("SELECT admin_note FROM orders WHERE tenant_id=? AND user_id=? "
+                          "AND status='remote_review' LIMIT 1",
+                          (ctx.tid, fresh["id"]), one=True)
+    if held_order:
+        return {"ok": False, "why": "remote_review", "plan": p,
+                "detail": held_order.get("admin_note") or REMOTE_REVIEW_NOTE}
     if fresh["balance"] < price:
         return {"ok": False, "why": "low_balance", "plan": p,
                 "short": price - fresh["balance"],
@@ -1349,6 +1361,9 @@ def wallet_purchase(ctx, user, plan_id, renew_sub_id=None,
 
     ok, result = provision(ctx, order["id"])
     if not ok:
+        if ctx.db.get_order(order["id"])["status"] == "remote_review":
+            return {"ok": False, "why": "remote_review", "plan": p,
+                    "detail": str(result)}
         # بستن و برگرداندن پول، با هم و یک بار.
         ctx.db.close_order(order["id"], "rejected", "خطا در ساخت کانفیگ")
         return {"ok": False, "why": "provision", "plan": p,
@@ -1406,6 +1421,8 @@ def wallet_pay(ctx, user, chat_id, message_id, plan_id,
         return deliver(ctx, r["user"], r["sub"])
 
     why = r["why"]
+    if why == "remote_review":
+        return _reply(ctx, chat_id, message_id, r["detail"], back_kb())
     if why == "store_closed":
         return _reply(ctx, chat_id, message_id, core.STORE_CLOSED, back_kb())
     if why == "no_plan":
@@ -1449,7 +1466,7 @@ def wallet_pay(ctx, user, chat_id, message_id, plan_id,
 
 
 def receipt_submit(ctx, user, order_id, rtype, rfile=None, rtext=None,
-                   photo_bytes=None):
+                   photo_bytes=None, notify_async=False):
     """
     ثبتِ رسیدِ یک سفارشِ کارتی، و خبردادن به گروه مدیریت.
 
@@ -1469,16 +1486,15 @@ def receipt_submit(ctx, user, order_id, rtype, rfile=None, rtext=None,
     پنل نماینده بدون هیچ تغییری همان رسید را نشان می‌دهند.
     """
     order = ctx.db.get_order(order_id)
-    if not order or order["status"] != "pending":
+    if not order or order["user_id"] != user["id"] or order["status"] != "pending":
         return False, "closed"
 
     if order.get("expires_at"):
         try:
             if datetime.fromisoformat(order["expires_at"]) < datetime.now():
-                ctx.db.exec(
-                    "UPDATE orders SET status='expired' WHERE tenant_id=? AND id=?",
-                    (ctx.tid, order_id))
-                _release_coins(ctx, order_id)
+                won, _ = ctx.db.close_order(order_id, "expired")
+                if won:
+                    _release_coins(ctx, order_id)
                 return False, "expired"
         except ValueError:
             # مهلتِ ناخوانا یعنی قاعده‌ی مهلت اجرا نشد؛ رسید پذیرفته می‌شود،
@@ -1486,59 +1502,50 @@ def receipt_submit(ctx, user, order_id, rtype, rfile=None, rtext=None,
             log.warning("order %s has unreadable expires_at %r — deadline not enforced",
                         order_id, order.get("expires_at"))
 
-    t = DB.get_tenant(ctx.tid)
-    # گروه، یا پیویِ صاحبِ ربات — همان قاعده‌ی `notify_group`.
-    gid, receipts_topic = ctx.staff_chat("receipts")
-
-    # عکسی که از تلگرام نیامده باید اول آپلود شود تا `file_id` بگیرد.
-    #
-    # همین آپلود، خودش اعلانِ گروه هم هست — دو کار با یک درخواست. و
-    # مهم‌تر: بعدش رسیدِ مینی‌اپ دقیقاً مثل رسیدِ ربات ذخیره می‌شود،
-    # پس هیچ‌جای پایین‌دست لازم نیست بداند از کجا آمده.
-    uploaded = None
-    if photo_bytes and gid:
+    if rtype == 'photo' and rfile and not str(rfile).startswith(('local:', 'media:')):
+        from bot import media
         try:
-            r = ctx.bot.send_photo_bytes(
-                gid, photo_bytes, filename=f"receipt-{order_id}.jpg",
-                caption=_receipt_caption(ctx, user, order, rtext),
-                topic_id=receipts_topic)
-            ph = ((r or {}).get("result") or {}).get("photo") or []
-            if ph:
-                uploaded = ph[-1].get("file_id")
-        except (TelegramError, KeyError, TypeError) as e:
-            log.warning("آپلود رسید مینی‌اپ ناموفق: %s", e)
+            rfile, photo_bytes = media.retain_existing(ctx.tid, 'receipt', order_id, rfile, ctx.bot)
+        except Exception:
+            log.exception('receipt retention failed for order %s', order_id)
+            return False, 'retention'
+    if rtype == 'photo' and str(rfile or '').startswith('media:'):
+        from bot import media
+        row = media.asset(rfile, ctx.tid)
+        if not row or row['state'] != 'ready' or row['purpose'] != 'receipt' or row['owner_id'] != order_id:
+            return False, 'retention'
 
-    # `rfile` اگر از قبل آمده، منبعِ اصلی است و جایش را نمی‌دهد.
-    #
-    # مینی‌اپ عکس را روی دیسکِ خودمان می‌گذارد و ارجاعِ `local:` را
-    # می‌فرستد. اگر این‌جا با `file_id` تلگرام جایگزین شود، همان
-    # وابستگی برمی‌گردد که باعث گم‌شدنِ رسید شده بود. `uploaded`
-    # فقط برای پیامِ گروه است.
-    if uploaded and not rfile:
-        rfile = uploaded
-
-    # شرطی، نه بی‌قید: بین بررسی مهلت بالا و همین لحظه، جاروکشِ
-    # زمان‌بند می‌تواند سفارش را منقضی کرده و سکه‌ها را پس داده باشد.
+    # Claim before any Telegram side effect: two slow uploads must not notify twice.
     if not ctx.db.attach_receipt(order_id, rtype, rfile, rtext):
         return False, "race"
 
-    # اگر عکس همین حالا آپلود شد، گروه خبردار شده — فقط دکمه‌ها را
-    # جدا می‌فرستیم. وگرنه اعلانِ کامل.
-    buttons = kb([[("✅ تایید", f"ap:{order_id}"), ("❌ رد", f"rj:{order_id}")]])
-    info = _receipt_caption(ctx, user, order, rtext)
-
-    if uploaded:
-        ctx.notify_group(f"سفارش #{order_id}: تصمیم شما؟",
-                         keyboard=buttons, topic="receipts")
-    elif gid and rtype == "photo" and rfile and not str(rfile).startswith("local:"):
-        try:
-            ctx.bot.send_photo(gid, rfile, caption=info, keyboard=buttons,
-                               topic_id=receipts_topic)
-        except TelegramError as e:
-            log.warning("ارسال عکس رسید ناموفق: %s", e)
+    def notify():
+        buttons = kb([[("✅ تایید", f"ap:{order_id}"), ("❌ رد", f"rj:{order_id}")]])
+        info = _receipt_caption(ctx, user, order, rtext)
+        if str(rfile or '').startswith('media:'):
+            from bot import media
+            try:
+                archived = media.receipt_notice(ctx, rfile, info, buttons)
+            except Exception:
+                log.exception('receipt archive notification failed for order %s', order_id)
+                ctx.notify_group(info, keyboard=buttons, topic='receipts')
+                return
+            if archived:
+                return
+        if photo_bytes:
+            ctx.notify_group(info, keyboard=buttons, topic="receipts", photo=photo_bytes)
+        elif rtype == "photo" and rfile and not str(rfile).startswith(('local:', 'media:')):
+            gid, topic = ctx.staff_chat("receipts")
+            if gid:
+                ctx.bot.send_photo(gid, rfile, caption=info, keyboard=buttons, topic_id=topic)
+        else:
             ctx.notify_group(info, keyboard=buttons, topic="receipts")
+
+    # Retention is committed; notifying staff must not hold the mini app response.
+    if notify_async:
+        _spawn(notify)
     else:
-        ctx.notify_group(info, keyboard=buttons, topic="receipts")
+        notify()
 
     # The bank's SMS may already be here (docs/specs/2026-10-07-sms-auto-approve.md).
     # Off the customer's path: building the config takes seconds, and the
@@ -1604,6 +1611,8 @@ def handle_receipt(ctx, msg, user, state_data):
                             "<b>متن پیامک بانک</b> را بفرستید.")
 
     ok, why = receipt_submit(ctx, user, order_id, rtype, rfile, rtext)
+    if why == 'retention':
+        return ctx.bot.send(user['tg_id'], 'عکس رسید نگهداری نشد؛ لطفاً دوباره بفرستید. سفارش باز مانده است.')
     ctx.db.clear_state(user["tg_id"])
 
     if ok:
@@ -1676,6 +1685,7 @@ def show_order_status(ctx, user, chat_id, message_id, order_id):
         return _reply(ctx, chat_id, message_id, "سفارش پیدا نشد.", back_kb())
 
     labels = {
+        "remote_review": ("⏳", "نیازمند بررسی نتیجه سرور"),
         "awaiting": ("⏳", "در انتظار بررسی"),
         "review": ("🔍", "در حال بررسی"),
         "panel_approve": ("⚙️", "تایید شد، در حال ساخت کانفیگ"),
@@ -1693,8 +1703,8 @@ def show_order_status(ctx, user, chat_id, message_id, order_id):
         f"ثبت شده در {core.fa_datetime(o.get('created_at'))}\n\n"
         f"<i>کد پیگیری:</i> <code>#{order_id}</code>"
     )
-    if o["status"] == "rejected" and o.get("admin_note"):
-        txt += f"\n\n<b>دلیل رد شدن:</b>\n{esc(o['admin_note'])}"
+    if o["status"] in ("rejected", "remote_review") and o.get("admin_note"):
+        txt += f"\n\n<b>یادداشت سفارش:</b>\n{esc(o['admin_note'])}"
 
     return _reply(ctx, chat_id, message_id, txt, _waiting_kb(ctx, order_id))
 
@@ -1732,6 +1742,8 @@ def _free_email(ctx, user, prefix, limit=30):
 #: صداکننده باید این را از «ساخت کانفیگ شکست خورد» تشخیص بدهد،
 #: چون پاسخِ درست به این یکی صبر است نه تلاش دوباره.
 ORDER_BUSY = "این سفارش همین حالا در حال پردازش است"
+REMOTE_REVIEW_NOTE = ("نتیجه عملیات سرور هنوز مشخص نیست؛ سفارش و پرداخت برای بررسی "
+                      "نگه داشته شده است. تا بررسی پشتیبانی دوباره تلاش نکنید.")
 
 
 def loyalty_on():
@@ -1818,14 +1830,14 @@ def approve_order(ctx, order_id, admin_tg_id):
         """ادعا را پس می‌دهیم تا تلاش دوباره ممکن بماند."""
         ctx.db.exec(
             "UPDATE orders SET status='awaiting', admin_note=? "
-            "WHERE tenant_id=? AND id=? AND " + DB.UNDELIVERED,
+            "WHERE tenant_id=? AND id=? AND status <> 'remote_review' AND " + DB.UNDELIVERED,
             (note[:180], ctx.tid, order_id))
 
     # شارژ کیف پول کانفیگ ندارد — فقط موجودی اضافه می‌شود
     if order.get("kind") == "topup":
         u = ctx.db.get_user_by_id(order["user_id"])
-        ctx.db.add_balance(u["id"], order["amount"], "topup",
-                           "شارژ کیف پول", order_id)
+        if not ctx.db.credit_topup(order_id):
+            return False, "این شارژ قبلاً ثبت شده یا سفارش قابل شارژ نیست"
         fresh = ctx.db.get_user_by_id(u["id"])
         ctx.bot.send(
             u["tg_id"],
@@ -1865,6 +1877,8 @@ def approve_order(ctx, order_id, admin_tg_id):
 
     ok, result = provision(ctx, order_id)
     if not ok:
+        if ctx.db.get_order(order_id)["status"] == "remote_review":
+            return False, ORDER_BUSY
         # ادعا را پس می‌دهیم، وگرنه سفارشی که ساختش شکست خورده
         # approved می‌ماند و هیچ‌کس نمی‌تواند دوباره تلاش کند.
         _unclaim(f"خطای ساخت: {result}")
@@ -1962,7 +1976,31 @@ def provision(ctx, order_id):
         این‌جا نقطه‌ی خروج یکی است، پس راهِ ششم هم خودبه‌خود ثبت
         می‌شود.
     """
-    ok, res = _provision(ctx, order_id)
+    from backend import remote_xui as REMOTE
+    context = {"tenant_id": ctx.tid, "order_id": order_id}
+    order = ctx.db.get_order(order_id)
+    if order and order["status"] == "remote_review":
+        return False, order.get("admin_note") or REMOTE_REVIEW_NOTE
+    token = REMOTE.ORDER.set(context)
+    uncertain = False
+    try:
+        try:
+            ok, res = _provision(ctx, order_id)
+        except Exception as exc:
+            if not getattr(exc, "remote_uncertain", False):
+                raise
+            uncertain = True
+            ok, res = False, REMOTE_REVIEW_NOTE
+    finally:
+        try:
+            # A late success cannot turn an interrupted delivery into a safe refund.
+            released = not uncertain
+            if released and (REMOTE.directory() / 'remote-xui.db').exists():
+                released = REMOTE.release_order(context)
+        finally:
+            REMOTE.ORDER.reset(token)
+    if not released:
+        return False, (ctx.db.get_order(order_id) or {}).get("admin_note") or REMOTE_REVIEW_NOTE
     if not ok:
         try:
             order = ctx.db.get_order(order_id) or {}
@@ -2109,11 +2147,13 @@ def _provision(ctx, order_id):
             # منقضی می‌شد.
             sub = None
             target = order.get("renew_sub_id")
-            if target:
+            if target is not None:
                 sub = ctx.db.q(
                     "SELECT * FROM subscriptions WHERE tenant_id=? AND id=? "
-                    "AND user_id=?", (ctx.tid, int(target), user["id"]), one=True)
-            if not sub:
+                    "AND user_id=? AND deleted_at IS NULL", (ctx.tid, int(target), user["id"]), one=True)
+            if target is not None and not sub:
+                return False, "اشتراک انتخاب‌شده برای تمدید پیدا نشد"
+            if target is None:
                 subs = ctx.db.user_subs(user["id"])
                 sub = subs[0] if subs else None
             if sub:
@@ -2141,7 +2181,9 @@ def _provision(ctx, order_id):
                             sub["inbound_id"], sub["client_uuid"],
                             plan["days"], plan["gb"],
                             email=sub.get("client_email"))
-                    except Exception:
+                    except Exception as exc:
+                        if getattr(exc, "remote_uncertain", False):
+                            raise
                         if charge:
                             DB.refund_credit(
                                 ctx.tid, charge,
@@ -2226,7 +2268,9 @@ def _provision(ctx, order_id):
                 sub_base_url=sub_base, inbound_ids=pl_inbounds,
                 start_on_use=on_use, **extra,
             )
-        except Exception:
+        except Exception as exc:
+            if getattr(exc, "remote_uncertain", False):
+                raise
             if charge:
                 DB.refund_credit(ctx.tid, charge,
                                  "بازگشت: کار روی پنل انجام نشد")
@@ -2264,9 +2308,13 @@ def _provision(ctx, order_id):
                       "configs": res.get("configs") or []}
 
     except XUIError as e:
+        if getattr(e, "remote_uncertain", False):
+            raise
         log.error("خطای ساخت کانفیگ: %s", e)
         return False, f"خطای پنل: {e}"
     except Exception as e:
+        if getattr(e, "remote_uncertain", False):
+            raise
         log.exception("خطای غیرمنتظره در provision")
         return False, f"خطای غیرمنتظره: {e}"
 
@@ -3228,6 +3276,7 @@ def my_orders(ctx, user, chat_id, message_id):
                       kb([[(f"🛒 {buy_word(ctx)}", "buy")], [("‹ منو", "menu")]]))
 
     label = {
+        "remote_review": "⏳ نیازمند بررسی نتیجه سرور",
         "pending": "⏳ در انتظار رسید",
         "awaiting": "⏳ در حال بررسی",
         "approved": "✅ تایید شده",
@@ -3254,7 +3303,7 @@ def my_orders(ctx, user, chat_id, message_id):
             lines.append(f"با {core.fa(o['coins_used'])} سکه")
 
         # دلیل رد — مهم‌ترین چیزی که کاربر می‌خواهد بداند
-        if o["status"] == "rejected" and o.get("admin_note"):
+        if o["status"] in ("rejected", "remote_review") and o.get("admin_note"):
             lines.append(f"<i>دلیل: {esc(o['admin_note'][:90])}</i>")
 
         lines.append(f"<i>کد پیگیری:</i> <code>#{o['id']}</code>")
@@ -3285,6 +3334,9 @@ def trial_core(ctx, u):
     """
     if store_gate(ctx):
         return False, "store_closed"
+    if ctx.db.q("SELECT id FROM orders WHERE tenant_id=? AND user_id=? "
+                "AND status='remote_review' LIMIT 1", (ctx.tid, u["id"]), one=True):
+        return False, REMOTE_REVIEW_NOTE
     # An admin may take the trial again, to test the flow (see `trial_offer`).
     again = bool(u.get("trial_used")) and ctx.is_admin(u["tg_id"])
     if u.get("trial_used") and not again:
@@ -3309,6 +3361,8 @@ def trial_core(ctx, u):
     # کاربری که هیچ‌وقت چیزی نگرفت، در قیف «خرید موفق» شمرده می‌شد.
     ok, result = provision(ctx, order["id"])
     if not ok:
+        if ctx.db.get_order(order["id"])["status"] == "remote_review":
+            return False, str(result)
         # پیامِ صداکننده می‌گوید تست محفوظ است — پس واقعاً پسش می‌دهیم
         if not again:
             ctx.db.release_trial(u["id"])
@@ -3403,6 +3457,11 @@ def give_trial(ctx, user, chat_id, message_id):
 
     ok, result = trial_core(ctx, u)
     if not ok:
+        held = ctx.db.q("SELECT admin_note FROM orders WHERE tenant_id=? AND user_id=? "
+                        "AND status='remote_review' LIMIT 1", (ctx.tid, u["id"]), one=True)
+        if held:
+            return _reply(ctx, chat_id, message_id,
+                          held.get("admin_note") or REMOTE_REVIEW_NOTE, back_kb())
         if result == "used":
             return _reply(ctx, chat_id, message_id, TRIAL_USED_TEXT,
                           kb([[("🛒 دیدن پلن‌ها", "buy")], [("‹ بازگشت", "menu")]]))
@@ -3697,10 +3756,17 @@ def admin_order_detail(ctx, user, chat_id, message_id, order_id):
 
     if o.get("receipt_type") == "photo" and o.get("receipt_file"):
         try:
-            ctx.bot.send_photo(chat_id, o["receipt_file"], caption=txt, keyboard=kb(rows))
+            ref = o['receipt_file']
+            if str(ref).startswith(('media:', 'local:')):
+                from bot import media
+                blob = media.receipt_bytes(ref, ctx.tid)
+                ctx.bot.send_photo_bytes(chat_id, blob, caption=txt, keyboard=kb(rows))
+            else:
+                ctx.bot.send_photo(chat_id, ref, caption=txt, keyboard=kb(rows))
             return
-        except TelegramError as _exc:
-            log.debug("admin_order_detail step: %s", _exc)
+        except Exception as _exc:
+            log.warning('order %s receipt unavailable: %s', o['id'], type(_exc).__name__)
+            txt += '\n\n⚠️ تصویر رسید در دسترس نیست؛ متن سفارش و دکمه‌ها همچنان قابل استفاده‌اند.'
 
     return _reply(ctx, chat_id, message_id, txt, kb(rows))
 
@@ -4116,6 +4182,7 @@ def dispatch(tenant, bot, update):
             ctx.notify_group(_error_alert(update, e), topic="alerts")
         except Exception as _exc:
             log.warning("error alert to admin group: %s", _exc)
+        return False
     return None
 
 
@@ -4407,8 +4474,9 @@ def _on_callback(ctx, cq):
         if action == "topup":
             return wallet_topup_amount(ctx, user, chat_id, mid, int(arg))
         if action == "cancel":
-            ctx.db.exec("UPDATE orders SET status='expired' WHERE tenant_id=? AND id=?",
-                        (ctx.tid, int(arg)))
+            won, _money = ctx.db.close_order(int(arg), "expired")
+            if not won:
+                return _reply(ctx, chat_id, mid, ORDER_BUSY, back_kb())
             _release_coins(ctx, int(arg))
             ctx.db.clear_state(user["tg_id"])
             return _reply(ctx, chat_id, mid,
@@ -4834,6 +4902,9 @@ def auto_renew_subscription(tenant, bot, sub):
     نمی‌شود تا اگر کاربر شارژ کرد، دفعه‌ی بعد انجام شود.
     """
     ctx = Ctx(bot, tenant)
+    if ctx.db.q("SELECT id FROM orders WHERE tenant_id=? AND renew_sub_id=? "
+                "AND status='remote_review'", (ctx.tid, sub["id"]), one=True):
+        return
     if store_gate(ctx):
         # پیامی به مشتری نمی‌رود: زمان‌بند هر دور دوباره این‌جا می‌رسد و
         # هر بار یک پیام می‌شد. لاگ هست تا بی‌صدا نباشد.
@@ -4882,7 +4953,7 @@ def auto_renew_subscription(tenant, bot, sub):
         return
 
     order = ctx.db.create_order(user["id"], plan["id"], plan["price"], plan["price"],
-                                kind="renew", paid_from="wallet")
+                                kind="renew", paid_from="wallet", renew_sub_id=sub["id"])
 
     # اتمی: زمان‌بند تمدید خودکار در نخ جداگانه‌ای می‌دود و قفل هر چت
     # آن را پوشش نمی‌دهد. یعنی می‌تواند دقیقاً هم‌زمان با خریدِ خود
@@ -4943,6 +5014,8 @@ def auto_renew_subscription(tenant, bot, sub):
         ctx.notify_group(f"🔁 تمدید خودکار\n👤 <code>{user['tg_id']}</code>\n"
                          f"💰 {core.toman(plan['price'])} تومان", topic="renewals")
     else:
+        if ctx.db.get_order(order["id"])["status"] == "remote_review":
+            return
         # پول برمی‌گردد و سفارش بسته می‌شود — با هم، وگرنه یکی از آن
         # دو جا می‌ماند. برگشت هم به سفارش گره می‌خورد؛ قبلاً
         # order_id نمی‌گرفت و در دفتر پیدا نمی‌شد.

@@ -3,6 +3,91 @@
 Each entry says what was broken and why, not a list of commits.
 History before 2.0 lives with the 1.x line.
 
+## [2.4.1] - 2026-10-20
+
+### Bot payments, uploads and channel automation
+
+Stale top-up approvals could credit the same payment again. Crediting now records
+delivery in the same transaction as the balance and ledger, and later approval or
+rejection cannot undo that result. Explicit renewals reject missing, deleted or
+foreign subscriptions instead of silently creating a new configuration. Receipt
+expiry cannot overwrite a receipt already accepted by another worker.
+
+Polling now persists admitted updates before advancing its offset, bounds queued
+work and serializes each chat without occupying workers for waiting chats.
+Interrupted updates are held for review rather than replaying uncertain payments.
+
+New uploaded images are retained through each shop's Telegram bot as verified file
+references. Private views use authenticated, bounded reads; old attachments remain
+readable. A resumable migration verifies replacements and retains original files.
+The full backup also includes legacy channel images from the default data folder.
+Failed image loads leave text and payment controls usable.
+
+Channel automation is opt-in and owner-only, reusing the existing AI provider and
+post composer. Generation and delivery run separately from payment scheduling;
+durable slots prevent duplicate runs and uncertain sends are not retried blindly.
+AI settings preserve masked keys and unrelated settings. XUI setup now explicitly
+asks whether the panel shares this host and whether its server is in Iran or abroad.
+
+### Settings and release safety
+
+Some accounting paths still used the host's calendar even though billing periods
+use Tehran dates. On a UTC host this could omit an evening-created client or put
+a default payment, expense or settlement on the previous day. First-seen records,
+period shares and default financial dates now use the shared Tehran clock.
+
+Remote clients used an agent:// transport address, which removed the hostname
+fallback when 3x-ui had no explicit subscription domain. Subscription links now
+use the preserved original panel host. If no subscription address can be built,
+remote provisioning stops before creating a client instead of selling without
+a delivery link. Explicit subscription domains keep their priority.
+
+Removed the international connectivity checks from System settings and their
+admin-only HTTP endpoints. Existing managed egress remains available to installed
+panels so removing the settings card does not interrupt Telegram or updates.
+
+An export into an empty folder previously printed Git publication commands even
+though Git could resolve the private parent repository. The exporter now refuses
+to overwrite a clone with any origin other than the public panel repository and
+prints no publication commands for an output without its own checkout. Commands
+also push only the current version tag, not every local tag.
+
+The Pro publisher writes to its local issuer directory; it does not upload to a
+remote server. Running it on Windows is now refused with an instruction to run it
+on the Linux issuer host, preventing a local archive from being reported as a
+production publication.
+
+## [2.4.0] - 2026-10-19
+
+### Central panel with a local 3x-ui agent
+
+Restricted international access on an Iran host could delay Telegram delivery
+even while the panel loaded normally. The panel can now be installed separately
+on an internet-connected host using `install.sh --central`. Its existing bot
+settings include a server-source page, host regions, one-use enrollment and
+revocation. A standalone agent beside 3x-ui initiates HTTPS to the central panel;
+the agent's login configuration stays on that host and installation needs no
+PyPI access. Database snapshots contain private 3x-ui state and must be protected
+on the central host and in its backups.
+
+Ordered, consistent SQLite snapshots feed the existing accounting calculations.
+Stale data fails explicitly, older concurrent reads cannot reset accounting
+baselines, and automatic deletion requires a live remote check. Commands have
+persistent execution IDs. An uncertain mutation stops repeated execution and
+holds related payments for reconciliation, including reseller credit. Operator
+review never replays a command. Remote state and the referenced snapshot are
+included in the full panel backup. Local host port diagnostics are not presented
+as diagnostics of the remote 3x-ui server.
+
+### Mini app receipts and support messages
+
+Slow Telegram uploads previously held up mini app responses, and retrying an
+ambiguous send could duplicate receipts. Receipts are now claimed atomically
+before one notification is scheduled, with their original image stored locally.
+Repeated requests acknowledge the accepted receipt; concurrent uploads cannot
+overwrite it. Support messages are saved before background notification, and
+ambiguous Telegram sends are not blindly replayed.
+
 ## [2.3.11] - 2026-10-18
 
 ### Automatic connectivity for restricted networks

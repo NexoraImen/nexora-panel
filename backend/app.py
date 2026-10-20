@@ -13,6 +13,7 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from backend import connectivity as NET
+from backend import remote_xui as REMOTE
 from datetime import datetime, timedelta
 from fastapi import (FastAPI, HTTPException, Header, Request, Response,
                      Depends)
@@ -2320,7 +2321,7 @@ def bot_orders(status: str = "awaiting", limit: int = 50,
         return {"orders": [], "dbReady": False}
 
     try:
-        allowed = {"awaiting", "review", "approved", "rejected", "all"}
+        allowed = {"awaiting", "review", "remote_review", "approved", "rejected", "all"}
         if status not in allowed:
             status = "awaiting"
 
@@ -2857,6 +2858,10 @@ def _logo_path(tid: int):
 def _logo_url(tid) -> str:
     """نشانیِ عمومیِ لوگو، یا رشته‌ی خالی. رابط از همین تصمیم می‌گیرد."""
     try:
+        from bot import media
+        ref = media.current(int(tid), 'logo', int(tid))
+        if ref is not None:
+            return media.url(ref) if ref else ''
         return f"/api/public/logo/{int(tid)}" if _logo_path(tid) else ""
     except (TypeError, ValueError):
         return ""
@@ -2898,15 +2903,15 @@ def _logo_save(tid: int, payload: dict):
         raise HTTPException(status_code=400,
                             detail="فقط PNG، JPEG یا WebP — و فایل باید سالم باشد")
 
-    LOGO_DIR.mkdir(parents=True, exist_ok=True)
-    # پسوندِ قبلی ممکن است فرق کند، پس همه را پاک کن وگرنه دو فایل
-    # می‌مانند و `_logo_path` قدیمی را برمی‌دارد
-    _logo_clear(tid)
-    (LOGO_DIR / f"{int(tid)}.{ext}").write_bytes(blob)
+    ref = _media_retain(tid, 'logo', tid, blob, (payload or {}).get('request_id'))
+    from bot import media
+    media.bind(tid, 'logo', tid, ref)
     return {"ok": True, "url": _logo_url(tid), "bytes": len(blob)}
 
 
 def _logo_clear(tid: int):
+    from bot import media
+    media.clear(tid, 'logo', tid)
     for ext in ("png", "jpg", "webp"):
         p = LOGO_DIR / f"{int(tid)}.{ext}"
         if p.exists():
@@ -3064,7 +3069,9 @@ def _inbox_send(t, payload):
     photo = _chat_photo_save(t["id"], uid, raw) if raw else None
     try:
         db = _bot_db_rw(t)
-        db.chat_add(uid, "admin", body[:2000], photo=photo)
+        mid = db.chat_add(uid, "admin", body[:2000], photo=photo, request_id=p.get('request_id'))
+        if mid is None:
+            return {'ok': True, 'photo': photo or ''}
         db.chat_mark_read(uid, "admin")
         u = db.get_user_by_id(uid)
     except Exception as e:
@@ -3372,10 +3379,12 @@ def _receipt_save(order_id: int, blob: bytes):
     ext, _ctype = _logo_kind(blob)
     if not ext:
         return None
-    RECEIPT_DIR.mkdir(parents=True, exist_ok=True)
-    name = f"{int(order_id)}.{ext}"
-    (RECEIPT_DIR / name).write_bytes(blob)
-    return LOCAL_RECEIPT + name
+    from bot import db as media_db
+    with media_db.conn() as cx:
+        order = cx.execute('SELECT tenant_id FROM orders WHERE id=?', (order_id,)).fetchone()
+    if not order:
+        raise HTTPException(status_code=404, detail="سفارش پیدا نشد")
+    return _media_retain(order['tenant_id'], 'receipt', order_id, blob)
 
 
 def _receipt_local(ref):
@@ -3412,11 +3421,17 @@ def _avatar_find(tid, uid):
 
 
 def _avatar_url(tid, uid):
+    from bot import media
+    ref = media.current(tid, 'avatar', uid)
+    if ref is not None:
+        return media.url(ref) if ref else ''
     p = _avatar_find(tid, uid)
     return f"/api/public/avatar/{p.name}" if p else ""
 
 
 def _avatar_clear(tid, uid):
+    from bot import media
+    media.clear(tid, 'avatar', uid)
     while True:
         p = _avatar_find(tid, uid)
         if not p:
@@ -3449,21 +3464,25 @@ def _avatar_save(tid, uid, raw):
     if not ext:
         raise HTTPException(status_code=400, detail="فقط PNG، JPEG یا WebP")
 
-    AVATAR_DIR.mkdir(parents=True, exist_ok=True)
-    _avatar_clear(tid, uid)
-    name = f"{int(tid)}_{int(uid)}_{_s.token_hex(8)}.{ext}"
-    (AVATAR_DIR / name).write_bytes(blob)
-    return f"/api/public/avatar/{name}"
+    ref = _media_retain(tid, 'avatar', uid, blob)
+    from bot import media
+    media.bind(tid, 'avatar', uid, ref)
+    return media.url(ref)
 
 
 @app.get("/api/public/avatar/{name}")
-def public_avatar(name: str):
+def public_avatar(name: str, request: Request):
     """
     عکسِ پروفایل. نامِ فایل تصادفی است، پس خودش کلیدِ دسترسی است.
     """
     # نامِ آمده از بیرون هرگز مستقیم به مسیر نمی‌چسبد
     if "/" in name or "\\" in name or ".." in name:
         raise HTTPException(status_code=404, detail="پیدا نشد")
+    try:
+        tid, uid, _ = name.split('_', 2)
+        _private_media_auth(request, int(tid), int(uid))
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=404, detail='Not Found')
     p = AVATAR_DIR / name
     if not p.exists() or not p.is_file():
         raise HTTPException(status_code=404, detail="پیدا نشد")
@@ -3472,7 +3491,7 @@ def public_avatar(name: str):
     if not ctype:
         raise HTTPException(status_code=404, detail="پیدا نشد")
     return Response(content=blob, media_type=ctype,
-                    headers={"Cache-Control": "public, max-age=600"})
+                    headers={"Cache-Control": "private, no-store"})
 
 
 #: عکسِ داخل گفتگو.
@@ -3510,14 +3529,15 @@ def _chat_photo_save(tid, uid, raw):
     if not ext:
         raise HTTPException(status_code=400, detail="فقط PNG، JPEG یا WebP")
 
-    CHAT_DIR.mkdir(parents=True, exist_ok=True)
-    name = f"{int(tid)}_{int(uid)}_{_s.token_hex(12)}.{ext}"
-    (CHAT_DIR / name).write_bytes(blob)
-    return f"/api/public/chat-photo/{name}"
+    from bot import media
+    return media.url(_media_retain(tid, 'chat', uid, blob))
 
 
 def _chat_photo_bytes(url):
     """بایت‌های عکسِ یک پیام، برای فرستادنش در تلگرام."""
+    if str(url or '').startswith(('/api/public/media/', '/api/private-media/')):
+        from bot import media
+        return media.read(url)
     name = str(url or "").rsplit("/", 1)[-1]
     if not name or "\\" in name or ".." in name:
         return None
@@ -3528,12 +3548,84 @@ def _chat_photo_bytes(url):
         return None
 
 
+def _media_retain(tid, purpose, owner_id, blob, request_id=None):
+    from bot import media
+    try:
+        return media.retain(tid, purpose, owner_id, blob, request_id=request_id)
+    except Exception as exc:
+        log.warning('media retention failed: %s', type(exc).__name__)
+        messages = {
+            'bot_missing': 'ربات این فروشگاه تنظیم نشده؛ توکن ربات را در تنظیمات فروشگاه ثبت کنید.',
+            'destination': 'مقصد نگهداری تصویر تنظیم نشده؛ مالک باید ربات فروشگاه را استارت بزند یا گروه مدیریت را وصل کند.',
+            'unknown': 'نتیجه بارگذاری تصویر مشخص نیست؛ تصویر پذیرفته نشده و برای جلوگیری از ارسال تکراری نیاز به بررسی دارد.',
+            'verifying': 'تصویر در تلگرام ذخیره شد ولی بررسی آن کامل نشد؛ دوباره تلاش کنید تا همان تصویر بررسی شود.',
+        }
+        raise HTTPException(status_code=503, detail=messages.get(getattr(exc, 'reason', ''),
+            'تصویر نگهداری نشد؛ اتصال و دسترسی ربات فروشگاه را بررسی و دوباره تلاش کنید.')) from None
+
+
+def _media_response(ref, tid=None, public=False):
+    from bot import media
+    try:
+        blob = media.read(ref, tid=tid, public=public)
+    except Exception as exc:
+        log.warning('media unavailable: %s', type(exc).__name__)
+        detail = ('این تصویر متعلق به ربات قبلی فروشگاه است؛ برای دیدن آن دسترسی ربات قبلی را بازیابی کنید.'
+                  if getattr(exc, 'reason', '') == 'replaced' else 'تصویر در دسترس نیست؛ اتصال و دسترسی ربات را بررسی کنید.')
+        raise HTTPException(status_code=404, detail=detail) from None
+    _, ctype = _logo_kind(blob)
+    if not ctype:
+        raise HTTPException(status_code=404, detail="تصویر معتبر نیست")
+    return Response(content=blob, media_type=ctype,
+                    headers={'Cache-Control': 'public, max-age=300' if public else 'private, no-store',
+                             'X-Content-Type-Options': 'nosniff'})
+
+
+@app.get('/api/public/media/{mid}')
+def public_media(mid: str):
+    return _media_response('media:' + mid, public=True)
+
+
+def _private_media_auth(request, tid, uid):
+    if request.headers.get('X-Admin-Password'):
+        if request.headers.get('X-Admin-Path', '').strip('/') != admin_path():
+            raise HTTPException(status_code=404, detail='Not Found')
+        check_auth(request.headers.get('X-Admin-Password'))
+        return
+    if request.headers.get('X-Portal-Token'):
+        if not globals().get('PRO_LOADED') or 'portal_tenant' not in globals():
+            raise HTTPException(status_code=404, detail='Not Found')
+        t = portal_tenant(request.headers.get('X-Portal-Token'))
+        if t['id'] == tid:
+            return
+    elif request.headers.get('X-Telegram-Init-Data') and 'mini_user' in globals():
+        t, u = globals()['mini_user'](request.headers.get('X-Telegram-Init-Data'))
+        if t['id'] == tid and u['id'] == uid:
+            return
+    raise HTTPException(status_code=404, detail='Not Found')
+
+
+@app.get('/api/private-media/{mid}')
+def private_media(mid: str, request: Request):
+    from bot import media
+    row = media.asset(mid)
+    if not row or row['purpose'] not in ('chat', 'avatar'):
+        raise HTTPException(status_code=404, detail='Not Found')
+    _private_media_auth(request, row['tenant_id'], row['owner_id'])
+    return _media_response('media:' + mid, tid=row['tenant_id'])
+
+
 @app.get("/api/public/chat-photo/{name}")
-def public_chat_photo(name: str):
+def public_chat_photo(name: str, request: Request):
     """عکسِ گفتگو. نامِ فایل تصادفی است، پس خودش کلیدِ دسترسی است."""
     # نامِ آمده از بیرون هرگز مستقیم به مسیر نمی‌چسبد
     if "/" in name or "\\" in name or ".." in name:
         raise HTTPException(status_code=404, detail="پیدا نشد")
+    try:
+        tid, uid, _ = name.split('_', 2)
+        _private_media_auth(request, int(tid), int(uid))
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=404, detail='Not Found')
     p = CHAT_DIR / name
     if not p.exists() or not p.is_file():
         raise HTTPException(status_code=404, detail="پیدا نشد")
@@ -3542,7 +3634,7 @@ def public_chat_photo(name: str):
     if not ctype:
         raise HTTPException(status_code=404, detail="پیدا نشد")
     return Response(content=blob, media_type=ctype,
-                    headers={"Cache-Control": "public, max-age=3600"})
+                    headers={"Cache-Control": "private, no-store"})
 
 
 @app.get("/api/public/logo/{tid}")
@@ -3551,7 +3643,11 @@ def public_logo(tid: int):
     لوگوی یک مستاجر — عمومی، چون مینی‌اپ و صفحه‌ی اشتراک بدون احراز
     هویت بازش می‌کنند. چیزی جز بایت‌های تصویر در پاسخ نیست.
     """
-    p = _logo_path(tid)
+    from bot import media
+    ref = media.current(tid, 'logo', tid)
+    if ref:
+        return _media_response(ref, tid=tid, public=True)
+    p = _logo_path(tid) if ref is None else None
     if not p:
         raise HTTPException(status_code=404, detail="لوگویی ثبت نشده")
     blob = p.read_bytes()
@@ -3696,7 +3792,7 @@ def bot_settings_get(x_admin_password: str = Header(...)):
         # که دیکشنری نیست و فرانت‌اند روی آن کرش می‌کند.
         for k in ("topics", "settings"):
             try:
-                parsed = json.loads(t.get(k) or "{}")
+                parsed = t[k] if isinstance(t.get(k), dict) else json.loads(t.get(k) or "{}")
             except (json.JSONDecodeError, TypeError, ValueError):
                 parsed = {}
             t[k] = parsed if isinstance(parsed, dict) else {}
@@ -3762,6 +3858,9 @@ def bot_settings_put(payload: dict, x_admin_password: str = Header(...)):
                   "default_inbound", "admin_group_id", "is_active"]
         for k in simple:
             if k in payload:
+                if k == 'panel_url' and REMOTE.active():
+                    cfg = REMOTE.settings()
+                    payload[k] = f"agent://{cfg['node_id']}"
                 con.execute(f"UPDATE tenants SET {k}=? WHERE id=?", (payload[k], tid))
 
         # فیلدهای حساس — فقط وقتی مقدار جدید و غیرخالی بیاید
@@ -3779,7 +3878,7 @@ def bot_settings_put(payload: dict, x_admin_password: str = Header(...)):
         _newst = payload.get("settings")
         if isinstance(_newst, dict) and isinstance(_newst.get("ai"), dict):
             _nk = str(_newst["ai"].get("api_key") or "")
-            if _nk.endswith("…"):
+            if not _nk.strip() or _nk.endswith("…"):
                 try:
                     _old = json.loads(con.execute(
                         "SELECT settings FROM tenants WHERE id=?",
@@ -3967,10 +4066,12 @@ def bot_reject_reason(order_id: int, payload: dict,
             raise HTTPException(status_code=400, detail="این سفارش قبلاً بررسی شده است")
 
         # ربات این وضعیت را می‌بیند، به مشتری خبر می‌دهد و سکه را برمی‌گرداند
-        con.execute(
+        claim = con.execute(
             "UPDATE orders SET status='panel_reject', admin_note=?, "
-            "reviewed_at=CURRENT_TIMESTAMP WHERE id=?",
+            "reviewed_at=CURRENT_TIMESTAMP WHERE id=? AND status IN ('awaiting','review')",
             (reason[:400], order_id))
+        if not claim.rowcount:
+            raise HTTPException(409, detail='وضعیت سفارش تغییر کرده است؛ صفحه را تازه کنید')
         con.commit()
         return {"ok": True}
     finally:
@@ -4000,10 +4101,12 @@ def bot_order_action(order_id: int, action: str, x_admin_password: str = Header(
             raise HTTPException(status_code=400, detail="این سفارش قبلاً بررسی شده است")
 
         new_status = "panel_approve" if action == "approve" else "rejected"
-        con.execute(
+        claim = con.execute(
             "UPDATE orders SET status=?, reviewed_at=CURRENT_TIMESTAMP, admin_note=? "
-            "WHERE id=?",
+            "WHERE id=? AND status IN ('awaiting','review')",
             (new_status, "از پنل مدیریت", order_id))
+        if not claim.rowcount:
+            raise HTTPException(409, detail='وضعیت سفارش تغییر کرده است؛ صفحه را تازه کنید')
         con.commit()
         return {"ok": True, "status": new_status}
     finally:
@@ -4119,6 +4222,35 @@ WantedBy=multi-user.target
         return "سرویس ربات ساخته شد"
     except Exception:
         return None
+
+
+def _selfheal_connect_service():
+    """Old updaters restart the new backend but cannot run new CLI install steps."""
+    if os.name != "posix" or os.geteuid() != 0:
+        return
+    root = _root_dir()
+    unit = Path("/etc/systemd/system/nexora-connect.service")
+    if unit.exists() or not unit.parent.exists():
+        return
+    python = root / "backend/venv/bin/python"
+    installer = root / "scripts/install-connect.py"
+    if not python.is_file() or not installer.is_file():
+        log.error("Managed connection bootstrap: installed Python or installer is missing")
+        return
+    import subprocess
+    try:
+        panel = subprocess.run(["systemctl", "show", "nexora-panel", "-p", "WorkingDirectory", "--value"],
+                               capture_output=True, text=True, timeout=10)
+        if panel.returncode or not panel.stdout.strip() or Path(panel.stdout.strip()).resolve() != (root / "backend").resolve():
+            return
+        result = subprocess.run([str(python), str(installer), "--root", str(root)],
+                                capture_output=True, text=True, timeout=45)
+        if result.returncode:
+            log.error("Managed connection bootstrap failed: %s", result.stderr.strip()[-300:] or result.returncode)
+        else:
+            log.info("Managed connection service installed after legacy upgrade")
+    except (OSError, subprocess.TimeoutExpired) as error:
+        log.error("Managed connection bootstrap failed: %s", type(error).__name__)
 
 
 def _selfheal_backup_cron():
@@ -4549,6 +4681,11 @@ def _sub_delete(h, t, d, s, now):
                     (t["id"], s["id"]), one=True)
         if not fresh or fresh.get("deleted_at") or not fresh.get("ended_at"):
             return False                  # renewed or gone meanwhile
+        if REMOTE.active():
+            x = h.Ctx(h.Bot(t["bot_token"]), t).xui
+            live = x.find_client(s["inbound_id"], email=s["client_email"])
+            if not live or not _sub_ended(_sub_api_client(live), now):
+                return False
         if t.get("parent_id"):
             # A reseller's config carries a bill. Only the billing core may
             # delete it; without Pro there is none, so it stays (and says so).
@@ -4664,7 +4801,7 @@ def _sub_lifecycle_shop(h, t, index, now):
     # of the shop's configs it read the right panel, and the rest are gone. A
     # "gone" mark is undone below the moment a config is seen again.
     found_n = len(subs) - len(missing)
-    guard = len(missing) >= 5 and found_n == 0
+    guard = bool(missing) if REMOTE.active() else len(missing) >= 5 and found_n == 0
     if guard:
         found = _sub_confirm_missing(h, t, missing)
         if found is None:
@@ -5022,17 +5159,6 @@ def _license_view():
             "pro_error": globals().get("PRO_ERROR", "")}
 
 
-@app.get("/api/admin/connectivity")
-def connectivity_get(_=Depends(check_auth)):
-    return NET.status()
-
-
-@app.post("/api/admin/connectivity/check")
-def connectivity_check(_=Depends(check_auth)):
-    NET.write("connect-recheck.json", {"at": time.time()})
-    return {"ok": True, "message": "بررسی اتصال در صف قرار گرفت."}
-
-
 def _license_install(resp):
     doc = resp.get("license") if isinstance(resp, dict) else None
     st, why = LIC.install(doc)
@@ -5153,6 +5279,8 @@ def _selfheal():
     و سرویس در هر حالت بالا می‌آید. اینها بهبودند، نه ضرورت.
     """
     _start_health_loop()
+    # systemctl must not delay readiness or the old updater's health request.
+    _threading.Thread(target=_selfheal_connect_service, name="connect-selfheal", daemon=True).start()
 
     steps = [
         ("cli", _selfheal_cli),
@@ -5580,6 +5708,8 @@ def bot_receipt(order_id: int, x_admin_password: str = Header(None)):
         # رسیدی که خودمان نگه داشته‌ایم — بدون رفتن به تلگرام.
         # یک قاعده‌ی نمایش، دو منبع: دیسک برای رسیدهای مینی‌اپ،
         # تلگرام برای رسیدهایی که در خودِ گفتگو آمده‌اند.
+        if str(row['receipt_file']).startswith('media:'):
+            return _media_response(row['receipt_file'], tid=row['tenant_id'])
         _lp = _receipt_local(row["receipt_file"])
         if _lp:
             _blob = _lp.read_bytes()
@@ -6138,6 +6268,13 @@ XUI_CANDIDATES = [
 
 def _xui_db_path():
     """مسیر فعلی دیتابیس x-ui را برمی‌گرداند."""
+    try:
+        remote_path = REMOTE.snapshot_path() if REMOTE.active() else None
+    except REMOTE.RemoteError:
+        return CONFIG_PATH.parent / 'remote-xui-unavailable.db'
+    if remote_path is not None:
+        return remote_path
+
     # ۱. تنظیم دستی در پنل.
     #
     # اگر مسیر دستی وجود نداشته باشد (غلط تایپی، فاصله‌ی اضافه،
@@ -6229,7 +6366,12 @@ def _xui_conn():
     «مجوز ندارد» و «قفل است» سه مشکل کاملاً متفاوت‌اند و کاربر باید
     بداند کدام است تا بتواند رفعش کند.
     """
-    xdb = _xui_db_path()
+    try:
+        if REMOTE.active():
+            REMOTE.snapshot_path()
+        xdb = _xui_db_path()
+    except REMOTE.RemoteError as exc:
+        return None, str(exc)
 
     if not xdb.exists():
         parent = xdb.parent
@@ -6714,7 +6856,7 @@ def _read_xui_clients():
     """
     con, cerr = _xui_conn()
     if not con:
-        return None, None, cerr or f"دیتابیس x-ui در {_xui_db_path()} در دسترس نیست"
+        return None, None, cerr or "دیتابیس x-ui در دسترس نیست"
 
     try:
         tables = {r["name"] for r in con.execute(
@@ -6848,6 +6990,9 @@ def _read_xui_clients():
                 r["expiry"] = int(t.get("expiry_time") or 0)
             out.append(r)
 
+        source_path = con.execute('PRAGMA database_list').fetchone()[2]
+        if Path(source_path).parent == REMOTE.directory() / 'remote-xui':
+            out = REMOTE.SnapshotClients(out, source_path)
         return out, known_groups, None
     finally:
         con.close()
@@ -7164,7 +7309,7 @@ def _period_share(cl, logged, rows, since, group_start=None, first_seen=None):
     if not since:
         return months, months, months - 1, True, kind, drift
 
-    today = datetime.now().strftime("%Y-%m-%d")
+    today = _tehran_today().isoformat()
     _cj, created_g = _to_jalali(cl.get("createdAt"))
     base_g = created_g or (first_seen or "")[:10]
     is_new = bool(base_g) and since <= base_g <= today
@@ -7751,6 +7896,7 @@ def _backup_dbs():
     """Where each database really is: the bot and billing paths come from
     environment variables and are not always under data/."""
     return {"bot.db": BOT_DB, "billing.db": BILLING_DB,
+            "remote-xui.db": CONFIG_PATH.parent / "remote-xui.db",
             "tunnels.db": Path(os.getenv("TUNNEL_DB_PATH",
                                          str(CONFIG_PATH.parent / "tunnels.db")))}
 
@@ -7847,6 +7993,11 @@ def _restore_full_upload(body, progress):
         _CFG_CACHE.update(version=None, json=None)
         globals()["_CFG_READY"] = False
         globals()["_CFG_LOCAL"] = _threading.local()
+        globals().get('_BOT_MODS', {}).clear()
+        import sys
+        media_module = sys.modules.get('bot.media')
+        if media_module:
+            media_module.invalidate_schema()
         try:
             if up is not None:
                 up.unlink(missing_ok=True)
@@ -8424,6 +8575,8 @@ _health_state = {}
 
 def _health_ports():
     """پورت‌هایی که باید شنونده داشته باشند — از inboundهای ۳x-ui."""
+    if REMOTE.active():
+        return []  # Remote inbound listeners do not belong to the central host.
     ports = set()
     try:
         con, _ = _xui_conn()
@@ -9738,6 +9891,7 @@ def _bot_handlers():
         raise HTTPException(
             status_code=503,
             detail=f"منطق ربات بارگذاری نشد: {type(e).__name__}")
+    _h.DB.init_db()
     _BOT_MODS["handlers"] = _h
     return _h
 
@@ -9898,3 +10052,22 @@ def _load_pro():
 
 _load_pro()
 
+
+
+from backend.remote_api import register as _register_remote_xui
+
+
+def _remote_save_url(tid, url):
+    _bot_handlers().DB.update_tenant(tid, panel_url=url)
+
+
+_register_remote_xui(app, REMOTE, check_auth, _root_tenant_row, _remote_save_url, _panel_origin)
+
+
+@app.middleware("http")
+async def _pin_remote_snapshot(request: Request, call_next):
+    token = REMOTE.PIN.set({})
+    try:
+        return await call_next(request)
+    finally:
+        REMOTE.PIN.reset(token)

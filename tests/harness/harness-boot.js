@@ -4499,6 +4499,7 @@
    "dbReady": true
   };
 
+  ORDERS.orders.forEach(function (o) { o.credited_at = null; });
   var USERS = {
    "users": [
     {
@@ -11027,7 +11028,11 @@ var D_CODES = { ready: true,
   // شاخه‌ی سالمِ «چیزی نیست» رندر می‌شد — همان دامی که CLAUDE.md
   // درباره‌اش هشدار می‌دهد. نامِ بلند عمدی است: کوتاه‌ترین نام
   // سرریزِ ردیف را پنهان می‌کند.
+  ORDERS.orders.push(Object.assign({}, ORDERS.orders[0], { id: 4102, status: "remote_review",
+    admin_note: "نتیجه ساخت روی سرور نیاز به تطبیق تحویل و پرداخت دارد", receipt_file: null, receipt_type: null }));
   var M_ORDERS = { orders: [
+    { id: 4102, status: "remote_review", amount: 280000,
+      plan: "پلن در انتظار تطبیق", paidFrom: "wallet", createdAt: "۱۴۰۵/۰۶/۲۷", expiresAt: "", note: "" },
     { id: 4098, status: "awaiting", amount: 280000,
       plan: "پلن سه‌ماهه ۱۰۰ گیگ — نامحدود کاربر", paidFrom: "card",
       createdAt: "۱۴۰۵/۰۶/۲۷", expiresAt: "", note: "" },
@@ -11135,7 +11140,72 @@ var D_CODES = { ready: true,
 
   // `method` هم لازم است: مسیرهایی که هم GET دارند و هم POST و
   // هم DELETE (مثل کدهای تخفیف) بدونش نمی‌توانند فرق بگذارند.
+  // Exercise connected, polling-with-stale-snapshot, pending and revoked agents together.
+  var XUI_NOW = Date.now() / 1000;
+  var XUI_REMOTE = { mode: "remote", region: "foreign", selected: "iran-primary", uncertain: [], orders: [], nodes: [
+    { id: "iran-primary", name: "سرور اصلی ایران", region: "iran", last_seen: XUI_NOW - 2, snapshot_at: XUI_NOW - 8, online: true, revoked: 0 },
+    { id: "iran-stale", name: "ایجنت آنلاین با snapshot قدیمی", region: "iran", last_seen: XUI_NOW - 3, snapshot_at: XUI_NOW - 7200, online: true, revoked: 0 },
+    { id: "iran-pending", name: "سرور در انتظار اولین snapshot", region: "iran", last_seen: null, snapshot_at: null, online: false, revoked: 0 },
+    { id: "foreign-offline", name: "سرور خارج قطع‌شده", region: "foreign", last_seen: XUI_NOW - 1800, snapshot_at: XUI_NOW - 1900, online: false, revoked: 0 },
+    { id: "iran-revoked", name: "سرور قبلی لغوشده", region: "iran", last_seen: XUI_NOW - 3600, snapshot_at: XUI_NOW - 3600, online: false, revoked: 1 },
+  ] };
+  if (Q0.get("xui") === "empty") XUI_REMOTE = { mode: "local", region: "foreign", selected: null, nodes: [], uncertain: [], orders: [] };
+  if (Q0.get("xui") === "orders") XUI_REMOTE.orders = [{ tenant_id: 1, order_id: 4101 }, { tenant_id: 2, order_id: 4101 }];
+  if (Q0.get("xui") === "uncertain") XUI_REMOTE.uncertain = [{ id: "uncertain-1", node_id: "iran-primary", method: "POST", path: "/panel/api/inbounds/addClient", created: XUI_NOW - 300 }];
+  var XUI_PAIR_COUNT = 0;
+  function xuiError(message, status) { var e = new Error(message); e.status = status; throw e; }
+
+  var CHANNEL_AUTOMATION = { enabled: false, topic: 'آموزش اتصال', cadence_minutes: 1440, next_run: null, last: null };
+
   function byPath(u, body, method) {
+    if (u.indexOf("/admin/remote-xui") >= 0) {
+      if (Q0.get("xui") === "error") xuiError("دریافت وضعیت سرور 3x-ui ناموفق بود", 503);
+      if (/\/remote-xui\/command\/[^/]+\/resolve$/.test(u) && method === "POST") {
+        if (!body || body.reviewed !== true) xuiError("بررسی نتیجه باید تأیید شود", 400);
+        var commandId = decodeURIComponent(u.split("/").slice(-2)[0]);
+        var command = XUI_REMOTE.uncertain.find(function (c) { return c.id === commandId; });
+        var commandNode = command && XUI_REMOTE.nodes.find(function (n) { return n.id === command.node_id; });
+        if (!commandNode || commandNode.revoked || !commandNode.snapshot_at || Date.now() / 1000 - commandNode.snapshot_at > 90) xuiError("اطلاعات تازه از سرور 3x-ui دریافت نشده؛ اتصال ایجنت را بررسی کنید", 409);
+        XUI_REMOTE.uncertain = XUI_REMOTE.uncertain.filter(function (c) { return c.id !== commandId; });
+        return { ok: true };
+      }
+      if (/\/remote-xui\/pair$/.test(u) && method === "POST") {
+        if (!body || !body.name || body.name.trim().length > 60 || ["iran", "foreign"].indexOf(body.region) < 0) xuiError("نام و موقعیت سرور معتبر نیست", 400);
+        var id = "paired-" + (++XUI_PAIR_COUNT), code = "harness-only-code-" + XUI_PAIR_COUNT;
+        XUI_REMOTE.nodes.push({ id: id, name: body.name.trim(), region: body.region, last_seen: null, snapshot_at: null, online: false, revoked: 0 });
+        return { code: code, node_id: id, expires: Date.now() / 1000 + 600,
+          installer_url: "https://panel.example.com/api/xui-agent/install.py",
+          command_hint: "curl --fail --silent --show-error https://panel.example.com/api/xui-agent/install.py -o /root/install-nexora-xui.py && python3 /root/install-nexora-xui.py --panel https://panel.example.com --code " + code };
+      }
+      if (/\/remote-xui\/node\/[^/]+\/pair$/.test(u) && method === "POST") {
+        var repairNode = XUI_REMOTE.nodes.find(function (n) { return n.id === decodeURIComponent(u.split("/").slice(-2)[0]); });
+        if (!repairNode) xuiError("سرور پیدا نشد", 404);
+        repairNode.revoked = 0; repairNode.online = false; repairNode.last_seen = null; repairNode.snapshot_at = null;
+        var repairCode = "harness-repair-code-" + (++XUI_PAIR_COUNT);
+        return { code: repairCode, node_id: repairNode.id, expires: Date.now() / 1000 + 600,
+          installer_url: "https://panel.example.com/api/xui-agent/install.py",
+          command_hint: "curl --fail --silent --show-error https://panel.example.com/api/xui-agent/install.py -o /root/install-nexora-xui.py && python3 /root/install-nexora-xui.py --panel https://panel.example.com --code " + repairCode + " --re-enroll" };
+      }
+      if (/\/remote-xui\/node\/[^/]+$/.test(u) && method === "DELETE") {
+        var revoked = XUI_REMOTE.nodes.find(function (n) { return n.id === decodeURIComponent(u.split("/").pop()); });
+        if (revoked) { revoked.revoked = 1; revoked.online = false; }
+        return { ok: true };
+      }
+      if (/\/remote-xui$/.test(u)) {
+        if (method === "PUT") {
+          if (!body || ["local", "remote"].indexOf(body.mode) < 0 || ["iran", "foreign"].indexOf(body.region) < 0) xuiError("نقش و موقعیت سرور معتبر نیست", 409);
+          if (body.mode === "remote") {
+            var node = XUI_REMOTE.nodes.find(function (n) { return n.id === body.node_id; });
+            if (!node || node.revoked || !node.snapshot_at || Date.now() / 1000 - node.snapshot_at > 90) xuiError("اطلاعات تازه از سرور 3x-ui دریافت نشده؛ اتصال ایجنت را بررسی کنید", 409);
+            if (XUI_REMOTE.selected && XUI_REMOTE.selected !== node.id) xuiError("تغییر منبع حسابداری به سروری دیگر نیاز به انتقال و تطبیق اطلاعات دارد", 409);
+            XUI_REMOTE.selected = node.id;
+          }
+          XUI_REMOTE.mode = body.mode; XUI_REMOTE.region = body.region;
+        }
+        return JSON.parse(JSON.stringify(XUI_REMOTE));
+      }
+      xuiError("مسیر اتصال سرور وجود ندارد", 404);
+    }
     /* نشانیِ مخفیِ پنل — شکلِ /api/admin/panel-path */
     if (u.indexOf("/admin/panel-path/rotate") >= 0) {
       return { path: "b8r2kq7mz4hx9tw3pn6d", url: "https://panel.example.com/b8r2kq7mz4hx9tw3pn6d/" };
@@ -11323,14 +11393,24 @@ var D_CODES = { ready: true,
     if (u.indexOf("/admin/channel/ai-image") >= 0) {
       return { ok: true, photo: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==" };
     }
+    if (u.indexOf("/admin/channel/automation") >= 0) {
+      if (method === 'PUT') {
+        CHANNEL_AUTOMATION = Object.assign({}, CHANNEL_AUTOMATION, body || {});
+        CHANNEL_AUTOMATION.next_run = CHANNEL_AUTOMATION.enabled
+          ? Date.now() / 1000 + CHANNEL_AUTOMATION.cadence_minutes * 60 : null;
+        return { ok: true, automation: Object.assign({}, CHANNEL_AUTOMATION) };
+      }
+      return Object.assign({}, CHANNEL_AUTOMATION);
+    }
     if (u.indexOf("/admin/channel/ai") >= 0) {
+      if (method === 'PUT') return { ok: true };
       if (method === "POST") {
         return { ok: true, text: "🎉 <b>تخفیفِ آخر هفته</b>\n\nتا یکشنبه با کدِ <code>OFF30</code> سی درصد کمتر بپردازید." };
       }
       return { ready: true, why: "", hasKey: true, model: "demo-1",
                baseUrl: "https://api.example.test/v1",
                imageUrl: "https://img.example.test/p/{q}", tone: "صمیمی و کوتاه",
-               enabled: true };
+               enabled: true, automation: Object.assign({}, CHANNEL_AUTOMATION) };
     }
     if (u.indexOf("/admin/channel/check") >= 0) {
       /* همان قاعده‌ای که بک‌اند دارد، فقط برای دیدنِ صفحه:
@@ -11817,7 +11897,7 @@ var D_CODES = { ready: true,
     }
     if (u.indexOf("/admin/connectivity/check") >= 0) return { ok: true };
     if (u.indexOf("/admin/connectivity") >= 0) return {
-      state: "connected", ready: true, checked: Date.now() / 1000,
+      state: "connected", ready: true, agent_ready: true, checked: Date.now() / 1000,
       services: { telegram: "managed", github: "direct" }
     };
     if (u.indexOf("/admin/system") >= 0) {

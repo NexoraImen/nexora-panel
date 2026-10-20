@@ -201,7 +201,7 @@ if ghost:
 # مسیرهای عمومی و مسیرهای ایجنت را مستثنا می‌کنیم: صداکننده‌شان مرورگر،
 # صفحه‌ی اشتراک، یا اسکریپت ایجنت روی سرور دیگر است — نه App.jsx.
 PUBLIC = ("/api/public", "/api/sub", "/api/health", "/api/docs",
-          "/api/openapi", "/api/agent", "/api/sms")
+          "/api/openapi", "/api/agent", "/api/xui-agent", "/api/sms")
 
 #: مسیرهایی که می‌دانیم صداکننده ندارند و دلیلش را نوشته‌ایم.
 #: این فهرست عمداً کوتاه است — هر ورودی یک بدهی است، نه یک استثنا.
@@ -588,6 +588,8 @@ check("فهرست استثناها کهنه نشده", not _gone,
 _public = sorted(p for p, _n in _routes
                  if not p.startswith(("/api/admin", "/api/agent")))
 KNOWN_PUBLIC = {
+    '/api/public/media/{mid}',  # Only public logo references; HTTP tests reject private purposes.
+    '/api/private-media/{mid}',  # Explicit shop/user authentication is tested through real ASGI.
     "/api/public/config", "/api/preview", "/api/health", "/api/sub/{sub_id}",
     "/", "/api", "/api/docs", "/api/openapi.json",
     # ورود خودش نمی‌تواند رمز بخواهد

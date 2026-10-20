@@ -30,7 +30,7 @@ DB_PATH = Path(os.getenv("BOT_DB_PATH", "../data/bot.db"))
 #: sub_id, so a bare `sub_id IS NULL` would let a sold license be rejected,
 #: reverted to awaiting, or approved (and paid out) a second time.
 #: tests/test-sell-pro-core.py fails on any bare copy.
-UNDELIVERED = "sub_id IS NULL AND license_id IS NULL"
+UNDELIVERED = "sub_id IS NULL AND license_id IS NULL AND credited_at IS NULL"
 
 #: سقفِ ردیفِ `events` در هر مستاجر. تعریفِ اصلی در `bot/events.py`
 #: است؛ این‌جا فقط خوانده می‌شود تا `db` به آن ماژول وابسته نشود.
@@ -44,6 +44,71 @@ PRAGMA journal_mode = WAL;
 PRAGMA foreign_keys = ON;
 
 -- ═══ مستاجرها (هر ربات یک مستاجر) ═══
+CREATE TABLE IF NOT EXISTS bot_updates (
+    tenant_id INTEGER NOT NULL,
+    bot_key TEXT NOT NULL,
+    update_id INTEGER NOT NULL,
+    payload TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    error TEXT,
+    chat_id INTEGER,
+    PRIMARY KEY (tenant_id, bot_key, update_id)
+);
+
+CREATE TABLE IF NOT EXISTS channel_automation (
+    tenant_id INTEGER PRIMARY KEY,
+    enabled INTEGER NOT NULL DEFAULT 0,
+    topic TEXT NOT NULL DEFAULT '',
+    cadence_minutes INTEGER NOT NULL DEFAULT 1440,
+    next_run REAL NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS bot_watermarks (
+    tenant_id INTEGER NOT NULL,
+    bot_key TEXT NOT NULL,
+    floor INTEGER NOT NULL,
+    PRIMARY KEY(tenant_id,bot_key)
+);
+CREATE TABLE IF NOT EXISTS bot_poll_state (
+    tenant_id INTEGER NOT NULL,
+    bot_identity TEXT NOT NULL,
+    epoch INTEGER NOT NULL DEFAULT 0,
+    last_received REAL NOT NULL,
+    PRIMARY KEY(tenant_id,bot_identity)
+);
+CREATE TABLE IF NOT EXISTS channel_runs (
+    tenant_id INTEGER NOT NULL,
+    slot REAL NOT NULL,
+    state TEXT NOT NULL,
+    post_id INTEGER,
+    error TEXT,
+    PRIMARY KEY (tenant_id, slot)
+);
+CREATE TABLE IF NOT EXISTS media_assets (
+    id TEXT PRIMARY KEY,
+    tenant_id INTEGER NOT NULL,
+    bot_key TEXT NOT NULL,
+    purpose TEXT NOT NULL,
+    owner_id INTEGER NOT NULL,
+    request_id TEXT NOT NULL,
+    state TEXT NOT NULL,
+    file_type TEXT NOT NULL DEFAULT 'document',
+    archive_chat_id INTEGER,
+    archive_message_id INTEGER,
+    file_id TEXT,
+    file_unique_id TEXT,
+    size INTEGER,
+    digest TEXT,
+    error TEXT,
+    UNIQUE(tenant_id,bot_key,purpose,owner_id,request_id)
+);
+CREATE TABLE IF NOT EXISTS media_bindings (
+    tenant_id INTEGER NOT NULL,
+    purpose TEXT NOT NULL,
+    owner_id INTEGER NOT NULL,
+    media_id TEXT NOT NULL,
+    PRIMARY KEY(tenant_id,purpose,owner_id)
+);
+
 CREATE TABLE IF NOT EXISTS tenants (
     id                INTEGER PRIMARY KEY AUTOINCREMENT,
     name              TEXT NOT NULL,
@@ -396,6 +461,12 @@ def ensure_aff_payouts(con):
 def _migrate(con):
     """ستون‌های جدید را به دیتابیس‌های موجود اضافه می‌کند."""
     adds = [
+        ('orders', 'credited_at', 'TEXT'),
+        ('chat_messages', 'request_id', 'TEXT'),
+        ('media_assets', 'file_type', "TEXT DEFAULT 'document'"),
+        ('media_assets', 'archive_chat_id', 'INTEGER'),
+        ('media_assets', 'archive_message_id', 'INTEGER'),
+        ('bot_updates', 'chat_id', 'INTEGER'),
         ("users", "phone_asked", "INTEGER DEFAULT 0"),
         # رمزِ ورودِ خودِ همکار فروش — هَش‌شده، مثل رمز پنل.
         # بدون این، همکار برای دیدنِ طلبش باید هر بار از مالک
@@ -550,6 +621,13 @@ def _migrate(con):
                 con.execute(f"ALTER TABLE {table} ADD COLUMN {col} {spec}")
         except sqlite3.Error as _exc:
             log.warning("db migration/setup (_migrate): %s", _exc)
+
+    # Linked historical credits are delivery evidence, never a reason to debit a customer.
+    con.execute('CREATE UNIQUE INDEX IF NOT EXISTS chat_request ON chat_messages '
+                '(tenant_id,user_id,sender,request_id) WHERE request_id IS NOT NULL')
+    con.execute("UPDATE orders SET credited_at=CURRENT_TIMESTAMP,status='approved' "
+        "WHERE kind='topup' AND credited_at IS NULL AND EXISTS (SELECT 1 FROM wallet_tx w "
+        "WHERE w.tenant_id=orders.tenant_id AND w.order_id=orders.id AND w.kind='topup' AND w.amount>0)")
 
     try:
         ensure_aff_payouts(con)
@@ -979,6 +1057,55 @@ class TenantDB:
         }
 
     # ---------- پست‌های کانال ----------
+    def channel_automation(self):
+        cfg = self.q("SELECT * FROM channel_automation WHERE tenant_id=?", (self.tid,), one=True)
+        last = self.q("SELECT * FROM channel_runs WHERE tenant_id=? ORDER BY slot DESC LIMIT 1",
+                      (self.tid,), one=True)
+        return {**(dict(cfg) if cfg else {'enabled': False, 'topic': '', 'cadence_minutes': 1440,
+                                         'next_run': None}), 'last': dict(last) if last else None}
+
+    def channel_automation_save(self, enabled, topic, cadence):
+        import time
+        with conn() as c:
+            c.execute("INSERT INTO channel_automation(tenant_id,enabled,topic,cadence_minutes,next_run) "
+                "VALUES(?,?,?,?,?) ON CONFLICT(tenant_id) DO UPDATE SET enabled=excluded.enabled, "
+                "topic=excluded.topic,cadence_minutes=excluded.cadence_minutes,next_run=excluded.next_run",
+                (self.tid, int(enabled), topic, cadence, time.time() + cadence * 60))
+            if not enabled:
+                c.execute("UPDATE channel_runs SET state='cancelled',error='Automation disabled' "
+                          "WHERE tenant_id=? AND state='generating'", (self.tid,))
+                c.execute("UPDATE channel_posts SET status='cancelled',error='ارسال خودکار خاموش شد' "
+                    "WHERE tenant_id=? AND status='queued' AND claimed_at IS NULL AND id IN "
+                    "(SELECT post_id FROM channel_runs WHERE tenant_id=? AND post_id IS NOT NULL)",
+                    (self.tid, self.tid))
+
+    def channel_automation_claim(self, now):
+        with conn() as c:
+            c.execute('BEGIN IMMEDIATE')
+            cfg = c.execute("SELECT a.* FROM channel_automation a JOIN tenants t ON t.id=a.tenant_id "
+                "WHERE a.tenant_id=? AND t.parent_id IS NULL AND t.is_active=1 "
+                "AND a.enabled=1 AND a.next_run<=?", (self.tid, now)).fetchone()
+            if not cfg:
+                return None
+            c.execute("INSERT INTO channel_runs(tenant_id,slot,state) VALUES(?,?,'generating')",
+                      (self.tid, cfg['next_run']))
+            # Skip missed slots: restarting after an outage must never produce a burst.
+            c.execute("UPDATE channel_automation SET next_run=? WHERE tenant_id=?",
+                      (now + cfg['cadence_minutes'] * 60, self.tid))
+            return dict(cfg)
+
+    def channel_automation_done(self, slot, body=None, error=None):
+        with conn() as c:
+            cur = c.execute("UPDATE channel_runs SET state=?,error=? WHERE tenant_id=? AND slot=? "
+                            "AND state='generating' AND EXISTS (SELECT 1 FROM channel_automation "
+                            "WHERE tenant_id=? AND enabled=1)",
+                            ('failed' if error else 'generated', error, self.tid, slot, self.tid))
+            if not cur.rowcount or error:
+                return
+            pid = c.execute("INSERT INTO channel_posts(tenant_id,body,status,scheduled_at) "
+                "VALUES(?,?,'queued',datetime('now','localtime'))", (self.tid, body)).lastrowid
+            c.execute('UPDATE channel_runs SET post_id=? WHERE tenant_id=? AND slot=?', (pid, self.tid, slot))
+
     def channel_posts(self, limit=50):
         return self.q(
             "SELECT * FROM channel_posts WHERE tenant_id=? "
@@ -1012,7 +1139,9 @@ class TenantDB:
                 # `channel_done` بی‌اثر بود.
                 "WHERE tenant_id=? AND id=? "
                 "AND status IN ('draft','queued','failed') "
-                "AND claimed_at IS NULL",
+                "AND claimed_at IS NULL AND NOT EXISTS (SELECT 1 FROM channel_runs r "
+                "LEFT JOIN channel_automation a ON a.tenant_id=r.tenant_id "
+                "WHERE r.tenant_id=channel_posts.tenant_id AND r.post_id=channel_posts.id AND COALESCE(a.enabled,0)=0)",
                 (self.tid, int(pid)))
             return bool(cur.rowcount)
 
@@ -1021,9 +1150,10 @@ class TenantDB:
         if error:
             # ادعا پس داده می‌شود تا تلاشِ دوباره ممکن بماند
             self.exec(
-                "UPDATE channel_posts SET status='failed', error=?, "
+                "UPDATE channel_posts SET status=?, error=?, "
                 "claimed_at=NULL WHERE tenant_id=? AND id=?",
-                (str(error)[:400], self.tid, int(pid)))
+                ('unknown' if 'مشخص نیست' in str(error) or 'نامشخص' in str(error) else 'failed',
+                 str(error)[:400], self.tid, int(pid)))
         else:
             self.exec(
                 "UPDATE channel_posts SET status='sent', error=NULL, "
@@ -1159,7 +1289,7 @@ class TenantDB:
                       SET status='rejected', reviewed_by=?, admin_note=?,
                           reviewed_at=CURRENT_TIMESTAMP
                     WHERE tenant_id=? AND id=?
-                      AND status <> 'rejected' AND """ + UNDELIVERED,
+                      AND status NOT IN ('rejected','remote_review') AND """ + UNDELIVERED,
                 (admin_tg_id, reason, self.tid, order_id))
             return bool(cur.rowcount)
 
@@ -1213,9 +1343,11 @@ class TenantDB:
             cur = c.execute(
                 """UPDATE subscriptions SET renewing_at=CURRENT_TIMESTAMP
                     WHERE tenant_id=? AND id=?
+                      AND NOT EXISTS (SELECT 1 FROM orders o WHERE o.tenant_id=?
+                          AND o.renew_sub_id=subscriptions.id AND o.status='remote_review')
                       AND (renewing_at IS NULL
                            OR renewing_at < datetime('now', ?))""",
-                (self.tid, sub_id, f"-{int(stale_minutes)} minutes"))
+                (self.tid, sub_id, self.tid, f"-{int(stale_minutes)} minutes"))
             return bool(cur.rowcount)
 
     def renew_failed(self, sub_id, max_hours=6):
@@ -1421,6 +1553,10 @@ class TenantDB:
                       SET status='approved', reviewed_by=?,
                           reviewed_at=CURRENT_TIMESTAMP
                     WHERE tenant_id=? AND id=?
+                      AND status <> 'remote_review'
+                      AND NOT EXISTS (SELECT 1 FROM wallet_tx w
+                          WHERE w.tenant_id=orders.tenant_id AND w.order_id=orders.id
+                            AND w.kind='topup')
                       AND (status <> 'approved'
                            OR (""" + UNDELIVERED + """
                                AND (reviewed_at IS NULL
@@ -1485,8 +1621,9 @@ class TenantDB:
             # خواندن‌های بعدی داخل همین تراکنش امن‌اند.
             cur = c.execute(
                 "UPDATE orders SET status=?, admin_note=COALESCE(?, admin_note) "
-                "WHERE tenant_id=? AND id=? AND status=?",
-                (status, note, self.tid, order_id, from_status))
+                "WHERE tenant_id=? AND id=? AND status=? AND status <> 'remote_review' "
+                "AND (? NOT IN ('rejected','expired','cancelled') OR (" + UNDELIVERED + "))",
+                (status, note, self.tid, order_id, from_status, status))
             if not cur.rowcount:
                 return False, 0
 
@@ -1582,7 +1719,9 @@ class TenantDB:
             with conn() as c:
                 cur = c.execute(
                     "UPDATE coin_tx SET kind='released' "
-                    "WHERE tenant_id=? AND id=? AND kind='hold'",
+                    "WHERE tenant_id=? AND id=? AND kind='hold' "
+                    "AND NOT EXISTS (SELECT 1 FROM orders o WHERE o.id=coin_tx.order_id "
+                    "AND o.tenant_id=coin_tx.tenant_id AND o.status='remote_review')",
                     (self.tid, tx["id"]))
                 if not cur.rowcount:
                     # نخ دیگری همین رزرو را برداشته
@@ -1620,6 +1759,30 @@ class TenantDB:
             return True
 
     # ---------- کیف پول ----------
+    def credit_topup(self, order_id):
+        """Commit the credit and its ledger evidence together, including stale claims."""
+        with conn() as c:
+            # The write lock precedes the ledger read so concurrent claims cannot both pay.
+            cur = c.execute(
+                "UPDATE orders SET credited_at=CURRENT_TIMESTAMP WHERE tenant_id=? AND id=? "
+                "AND kind='topup' AND status='approved' AND amount>0 "
+                "AND credited_at IS NULL "
+                "AND NOT EXISTS (SELECT 1 FROM wallet_tx w WHERE w.tenant_id=orders.tenant_id "
+                "AND w.order_id=orders.id AND w.kind='topup')",
+                (self.tid, order_id))
+            if not cur.rowcount:
+                return False
+            row = c.execute("SELECT user_id, amount FROM orders WHERE tenant_id=? AND id=?",
+                            (self.tid, order_id)).fetchone()
+            cur = c.execute("UPDATE users SET balance=balance+? WHERE tenant_id=? AND id=?",
+                            (row["amount"], self.tid, row["user_id"]))
+            if not cur.rowcount:
+                raise ValueError("Top-up buyer is missing")
+            c.execute("INSERT INTO wallet_tx (tenant_id,user_id,amount,kind,note,order_id) "
+                      "VALUES (?,?,?,'topup',?,?)",
+                      (self.tid, row["user_id"], row["amount"], "شارژ کیف پول", order_id))
+            return True
+
     def add_balance(self, user_id, amount, kind, note=None, order_id=None):
         """
         تغییر موجودی — برای واریز، برگشت پول و تنظیم دستی ادمین.
@@ -1725,7 +1888,7 @@ class TenantDB:
     # سه چیزِ به‌ظاهر جدا از همین‌جا می‌آیند: تاییدِ رسید، ردش با متنِ
     # دلیل، و گفتگو با پشتیبانی. هر سه یک شکل دارند، پس یک جا.
 
-    def chat_add(self, user_id, sender, body, order_id=None, photo=None):
+    def chat_add(self, user_id, sender, body, order_id=None, photo=None, request_id=None):
         """
         یک پیام در صندوق. برمی‌گرداند شناسه‌اش.
 
@@ -1737,10 +1900,14 @@ class TenantDB:
         photo = str(photo or "").strip() or None
         if not body and not photo:
             return None
-        return self.exec(
-            "INSERT INTO chat_messages (tenant_id, user_id, sender, body, photo, order_id) "
-            "VALUES (?,?,?,?,?,?)",
-            (self.tid, user_id, sender, body[:4000], photo, order_id))
+        if request_id is not None and (not isinstance(request_id, str) or not 1 <= len(request_id) <= 128):
+            raise ValueError('Invalid message request ID')
+        with conn() as c:
+            cur = c.execute(
+                "INSERT OR IGNORE INTO chat_messages (tenant_id,user_id,sender,body,photo,order_id,request_id) "
+                "VALUES (?,?,?,?,?,?,?)",
+                (self.tid, user_id, sender, body[:4000], photo, order_id, request_id))
+            return cur.lastrowid if cur.rowcount else None
 
     def chat_list(self, user_id, limit=100):
         """گفتگوی یک مشتری، قدیمی به تازه."""

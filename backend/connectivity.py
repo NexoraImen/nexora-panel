@@ -172,6 +172,7 @@ def status():
     if state == "granted":
         state = "agent_unavailable" if grant.get("expires", 0) > time.time() else "expired"
     return {"state": runtime.get("state", "starting") if fresh else state,
+            "agent_ready": fresh,
             "ready": bool(fresh and runtime.get("ready")),
             "checked": runtime.get("checked") if fresh else None,
             "services": {key: runtime.get("services", {}).get(key, "waiting") if fresh else "waiting"

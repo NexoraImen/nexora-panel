@@ -60,6 +60,9 @@ class FakeBot:
     def __init__(self, token=None):
         self.token = token
 
+    def file_bytes(self, *args, **kwargs):
+        return b'\x89PNG\r\n\x1a\n' + b'test image'
+
     def send(self, chat_id, text, keyboard=None, parse_mode="HTML",
              topic_id=None, **kw):
         SENT.append({"to": chat_id, "text": text, "kb": keyboard, "topic": topic_id})
@@ -81,11 +84,11 @@ class FakeBot:
         return {"message_id": len(SENT)}
 
     def send_photo_bytes(self, chat_id, data, filename="qr.png", caption=None,
-                         keyboard=None):
+                         keyboard=None, topic_id=None):
         # امضای واقعی؛ اگر عوض شود این تست باید بشکند نه اینکه بی‌صدا
         # از کنارش رد شود
         SENT.append({"to": chat_id, "text": caption or "[تصویر]",
-                     "photoBytes": bytes(data), "file": filename})
+                     "photoBytes": bytes(data), "file": filename, "topic": topic_id})
         return {"message_id": len(SENT)}
 
     def action(self, chat_id, kind="typing"):

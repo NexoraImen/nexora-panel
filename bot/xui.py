@@ -12,6 +12,8 @@ import secrets
 import time
 import uuid as uuidlib
 import logging
+from ipaddress import ip_address
+from urllib.parse import urlsplit
 from datetime import datetime, timedelta
 
 import requests
@@ -23,6 +25,29 @@ class XUIError(Exception):
     pass
 
 
+class _RemoteSession:
+    """Keep all existing XUI parsing and provisioning on the central server."""
+    def __init__(self, node_id):
+        self.node_id = node_id
+
+    def request(self, method, url, **kwargs):
+        from backend import remote_xui
+        prefix = f'agent://{self.node_id}'
+        if not url.startswith(prefix + '/'):
+            raise RuntimeError('Invalid remote 3x-ui source')
+        # Credentials are used only by the Iran agent, never sent in commands.
+        data = {k: v for k, v in kwargs.items() if k in ('data', 'json', 'params')}
+        result = remote_xui.rpc(self.node_id, method, url[len(prefix):], data)
+        response = requests.Response()
+        response.status_code = result['status']
+        response._content = result['body'].encode('utf-8')
+        response.encoding = 'utf-8'
+        return response
+
+    def get(self, url, **kwargs):
+        return self.request('GET', url, **kwargs)
+
+
 class XUI:
     def __init__(self, base_url, username=None, password=None, token=None,
                  timeout=20, all_inbounds=True, default_flow="xtls-rprx-vision"):
@@ -32,6 +57,8 @@ class XUI:
         self.token = token
         self.timeout = timeout
         self.s = requests.Session()
+        if self.base.startswith('agent://'):
+            self.s = _RemoteSession(self.base.removeprefix('agent://'))
         self._logged_in = False
         # مسیرهایی که یک‌بار جواب داده‌اند — تا هر بار دوباره نگردیم
         self._path_cache = {}
@@ -55,6 +82,9 @@ class XUI:
 
     def login(self):
         """اگر توکن داریم نیازی به لاگین نیست."""
+        if self.base.startswith('agent://'):
+            self._logged_in = True
+            return True
         if self.token:
             self._logged_in = True
             return True
@@ -837,13 +867,29 @@ class XUI:
         if not s or s.get("subEnable") is False:
             return None
 
+        base = self.base
+        if base.startswith('agent://'):
+            from backend import remote_xui
+            cfg = remote_xui.settings()
+            # agent:// is a transport address; customer links need the original public host.
+            base = (cfg.get('source_url') or '') if cfg.get('node_id') == base[8:] else ''
+
         uri = str(s.get("subURI") or "").strip()
         if uri.startswith("http"):
             return uri.rstrip("/")
 
         host = str(s.get("subDomain") or "").strip()
         if not host:
-            m = re.match(r"https?://([^:/]+)", self.base)
+            if self.base.startswith('agent://'):
+                candidate = urlsplit(base).hostname or ''
+                try:
+                    address = ip_address(candidate)
+                except ValueError:
+                    address = None  # A DNS hostname is expected when this is not an IP literal.
+                if (not candidate or candidate.lower().rstrip('.').endswith('localhost')
+                        or (address is not None and not address.is_global)):
+                    return None
+            m = re.match(r"https?://([^:/]+)", base)
             host = m.group(1) if m else ""
         if not host:
             return None
@@ -852,7 +898,7 @@ class XUI:
         path = str(s.get("subPath") or "/sub/").strip()
         if not path.startswith("/"):
             path = "/" + path
-        scheme = "https" if (s.get("subCertFile") or self.base.startswith("https")) else "http"
+        scheme = "https" if (s.get("subCertFile") or base.startswith("https")) else "http"
 
         netloc = host
         if port and int(port) not in (80, 443):
@@ -927,6 +973,10 @@ class XUI:
         می‌شود و گروه تنها چیزی است که می‌گوید مالِ کیست.
         """
         sub_id = self.make_sub_id(email)
+        if self.base.startswith('agent://') and not sub_base_url:
+            sub_base_url = self.panel_sub_base()
+            if not sub_base_url:
+                raise XUIError("آدرس عمومی لینک اشتراک مشخص نیست؛ دامنه لینک اشتراک را در تنظیمات ربات وارد کنید")
         client = self.add_client(inbound_id, email, gb=gb, days=days,
                                  ip_limit=ip_limit, tg_id=tg_id, sub_id=sub_id,
                                  inbound_ids=inbound_ids, group=group,

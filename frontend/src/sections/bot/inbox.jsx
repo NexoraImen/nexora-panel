@@ -24,6 +24,7 @@ import {
   Avatar, EmptyState, Field, Lightbox, Modal, PageSkeleton, SectionHead,
 } from "../../ui/index";
 import { shrinkImage } from "../../lib/image.js";
+import { PrivateImage } from '../../lib/private-media';
 
 /* ── پاسخ‌های آماده ──
 
@@ -270,11 +271,15 @@ export function BotInboxSection({ password, src, note }) {
     } catch (e) { setErr(e.message); }
   };
 
+  const sendAttempt = useRef(null);
   const send = async () => {
     const body = text.trim();
     if ((!body && !photo) || busy || !open) return;
     const temp = `tmp-${Date.now()}`;
     const pic = photo;
+    if (!sendAttempt.current || sendAttempt.current.body !== body || sendAttempt.current.photo !== pic || sendAttempt.current.user !== open) {
+      sendAttempt.current = { body, photo: pic, user: open, id: crypto.randomUUID() };
+    }
     setBusy(true); setErr("");
     setText(""); setPhoto("");
     setAtEnd(true);
@@ -285,12 +290,14 @@ export function BotInboxSection({ password, src, note }) {
     }]);
     boxRef.current?.focus();
     try {
-      await S.inboxSend({ userId: open, body, ...(pic ? { photo: pic } : {}) });
+      await S.inboxSend({ userId: open, body, request_id: sendAttempt.current.id, ...(pic ? { photo: pic } : {}) });
       lastMove.current = Date.now();
       await loadThread(open);
       loadThreads();
+      sendAttempt.current = null;
     } catch (e) {
       setErr(e.message);
+      setText(body); setPhoto(pic);
       // حبابِ ناموفق نباید شبیه پیامِ رفته بماند
       setMsgs((prev) => (prev || []).map(
         (m) => (m.id === temp ? { ...m, pending: false, failed: true } : m)));
@@ -430,7 +437,7 @@ export function BotInboxSection({ password, src, note }) {
                         {g.m.photo && (
                           <button className="fx-bub-photo" onClick={() => setZoom(g.m.photo)}
                             aria-label="بزرگ‌کردن عکس">
-                            <img src={g.m.photo} alt="" loading="lazy" />
+                            <PrivateImage src={g.m.photo} alt="" loading="lazy" />
                           </button>
                         )}
                         {g.m.body && <span className="fx-bub-text">{g.m.body}</span>}

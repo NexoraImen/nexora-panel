@@ -15,6 +15,7 @@ import {
 import { API_URL } from "../lib/constants";
 import { faNum, errText, toFaDigits } from "../lib/format";
 import { isoToJalaliLabel } from "./jalali.jsx";
+import { PrivateImage } from '../lib/private-media';
 
 /**
  * ارقام فارسی و عربی و جداکننده‌ها را به عددِ خامِ لاتین تبدیل می‌کند.
@@ -644,6 +645,7 @@ export function StatusPill({ s }) {
     cancelled: ["لغوشده", "var(--muted)", "var(--hair-2)"],
     panel_reject: ["در صف رد", "var(--danger)", "var(--danger-soft)"],
     review: ["بررسی", "var(--warn)", "var(--warn-soft)"],
+    remote_review: ["در انتظار تطبیق", "var(--warn)", "var(--warn-soft)"],
     approved: ["تاییدشده", "var(--ok)", "var(--ok-soft)"],
     panel_approve: ["در صف ساخت", "var(--accent-2)", "var(--accent-soft)"],
     rejected: ["ردشده", "var(--danger)", "var(--danger-soft)"],
@@ -1619,7 +1621,7 @@ export function Avatar({ name, id, size = 32, ring = false, src = "",
   // قابِ شکسته، که از نبودنِ عکس بدتر است.
   if (src && !failed) {
     return (
-      <img src={src} alt={String(name || "")} width={size} height={size}
+      <PrivateImage src={src} alt={String(name || "")} width={size} height={size}
         onError={() => setFailed(true)}
         className={`fx-avatar img ${ring ? "ring" : ""} ${className}`}
         style={{ width: size, height: size }} />
@@ -1687,7 +1689,7 @@ export function Lightbox({ src, onClose }) {
     <div className="fx-lightbox fx-fade" role="dialog" aria-modal="true"
       aria-label="عکس" onClick={onClose}>
       <button className="fx-lightbox-x" aria-label="بستن"><X size={18} /></button>
-      <img src={src} alt="" onClick={(e) => e.stopPropagation()} />
+      <PrivateImage src={src} alt="" onClick={(e) => e.stopPropagation()} />
     </div>,
     document.body);
 }

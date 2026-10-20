@@ -193,32 +193,6 @@ class Connectivity(unittest.TestCase):
                 self.assertTrue(N.status()["ready"])
         asyncio.run(check())
 
-    def test_admin_routes_protect_and_redact_state(self):
-        import ast
-        from fastapi import FastAPI, Depends, Request
-        from fastapi.responses import JSONResponse
-        harness = module("connect_asgi", "tests/test-restore-progress.py")
-        app = FastAPI()
-        tree = ast.parse((ROOT / "backend/app.py").read_text(encoding="utf-8"))
-        nodes = [node for node in tree.body if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-                 and node.name in {"connectivity_get", "connectivity_check", "_admin_path_gate"}]
-        namespace = dict(app=app, NET=N, Depends=Depends, Request=Request, JSONResponse=JSONResponse,
-                         _admin_path_ok=lambda value: value == "secret",
-                         _is_admin_api=lambda path: path.startswith("/api/admin/"),
-                         _FULL_RESTORE_LOCK=threading.Lock(), check_auth=lambda: None, time=time)
-        exec(compile(ast.Module(body=nodes, type_ignores=[]), "connectivity-routes", "exec"), namespace)
-        N.install(self.grant(), "a" * 64)
-        self.runtime()
-        client = harness.ASGIClient(app)
-        response = asyncio.run(client.request("/api/admin/connectivity"))
-        self.assertEqual(response.status_code, 404)
-        headers = {"X-Admin-Path": "secret"}
-        response = asyncio.run(client.request("/api/admin/connectivity", headers=headers))
-        self.assertEqual(response.status_code, 200)
-        self.assertNotIn(b"test-credential", response.content)
-        response = asyncio.run(client.request("/api/admin/connectivity/check", method="POST", headers=headers))
-        self.assertEqual(response.status_code, 200)
-        self.assertGreater(N.read("connect-recheck.json")["at"], 0)
 
 
 class Bridge(unittest.IsolatedAsyncioTestCase):

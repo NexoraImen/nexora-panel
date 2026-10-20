@@ -124,6 +124,7 @@ export function BotOrdersSection({ password }) {
 
   const FILTERS = [
     { k: "awaiting", l: "در انتظار تایید" },
+    { k: "remote_review", l: "در انتظار تطبیق" },
     { k: "approved", l: "تاییدشده" },
     { k: "rejected", l: "ردشده" },
     { k: "all", l: "همه" },

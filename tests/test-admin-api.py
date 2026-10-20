@@ -10,6 +10,7 @@
 اجرا:  python3 tests/test-admin-api.py
 """
 import io
+import ast
 from datetime import datetime as _dt
 import json
 import os
@@ -81,6 +82,22 @@ D_.exec("UPDATE users SET is_blocked=1 WHERE id=?", (u3["id"],))
 D_.create_user(1004, None, "مهدی", referred_by=u1["id"])
 
 import app                                            # noqa: E402
+from bot import media as _media_test
+
+
+class _ArchiveBot:
+    files = {}
+    def __init__(self, *a, **k):
+        pass
+    def send_doc_bytes(self, target, blob, **kwargs):
+        fid = f'fixture-{len(self.files)}'
+        self.files[fid] = bytes(blob)
+        return {'document': {'file_id': fid}}
+    def file_bytes(self, fid, **kwargs):
+        return self.files[fid]
+
+
+_media_test.Bot = _ArchiveBot
 
 app.BOT_DB = Path(TMP)
 # Pro code present? (docs/specs/2026-09-29-pro-split.md) The checks of a Pro
@@ -2966,6 +2983,8 @@ try:
                 "VALUES (2,1,555002,'سارا',1)")
     _cc.commit()
     app.BOT_DB = _cdb
+    _old_media_db = _BDc.DB_PATH
+    _BDc.DB_PATH = _cdb
 
     _ct = dict(_cc.execute("SELECT * FROM tenants WHERE id=1").fetchone())
     _cu = dict(_cc.execute("SELECT * FROM users WHERE id=1").fetchone())
@@ -3006,13 +3025,14 @@ try:
     _png = _b64c.b64decode(
         "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGA"
         "hKmMIQAAAABJRU5ErkJggg==")
+    _BDc.update_tenant(1, owner_tg_id=1, bot_token='1:test')
     _url = app._chat_photo_save(1, 1, _b64c.b64encode(_png).decode())
     _name = _url.rsplit("/", 1)[-1]
     # نامِ قابل‌حدس یعنی هر کسی با شمردنِ شناسه‌ها عکسِ پشتیبانیِ
     # بقیه را برمی‌دارد — همان قاعده‌ی عکسِ پروفایل
     check("نامِ فایل تصادفی است، نه <مستاجر>_<کاربر>",
           len(_name.split("_")[-1].split(".")[0]) >= 24, _name)
-    check("و سرو می‌شود", app.public_chat_photo(_name).media_type == "image/png")
+    check("و از مرجع نگهداری‌شده خوانده می‌شود", app._media_response('media:' + _name, tid=1).media_type == "image/png")
     check("بایت‌هایش برای تلگرام هم در دسترس است",
           app._chat_photo_bytes(_url) == _png)
 
@@ -3029,7 +3049,7 @@ try:
     _esc = []
     for _n in ("../config.json", "..\\x", "a/b", "....//x"):
         try:
-            app.public_chat_photo(_n)
+            app.public_chat_photo(_n, None)
             _esc.append(_n)
         except app.HTTPException:
             pass
@@ -3064,6 +3084,7 @@ try:
 finally:
     app.BOT_DB = _old_bot3
     app.CHAT_DIR = _old_chat
+    _BDc.DB_PATH = _old_media_db
 
 # ── قواعدی که در کد بمانند ──
 check("عکس پیش از ثبتِ پیام ذخیره می‌شود",
@@ -3499,8 +3520,15 @@ _PNG_A = _b64a.b64decode(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk"
     "+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==")
 
+_media_test.db.DB_PATH = Path(_tfa.mkdtemp(prefix='nx-media-')) / 'bot.db'
+_media_test.db.init_db()
+with _media_test.db.conn() as _mc:
+    _mc.execute("INSERT INTO tenants(id,name,bot_token,owner_tg_id) VALUES(1,'owner','1:test',1)")
+    _mc.execute("INSERT OR IGNORE INTO tenants(id,name,bot_token,owner_tg_id) VALUES(7,'media shop','7:test',7)")
+_media_test.db.update_tenant(1, bot_token='1:test', owner_tg_id=1)
+
 _u1 = app._avatar_save(7, 11, _b64a.b64encode(_PNG_A).decode())
-check("عکس ذخیره می‌شود", _u1.startswith("/api/public/avatar/"), _u1)
+check("عکس با مرجع خصوصی ذخیره می‌شود", _u1.startswith("/api/private-media/"), _u1)
 
 # نام نباید قابلِ حدس باشد: `7_11.png` یعنی هر کسی با شمردنِ
 # شناسه‌ها عکسِ هر مشتری را برمی‌دارد.
@@ -3514,8 +3542,8 @@ check("و دوباره پیدا می‌شود", app._avatar_url(7, 11) == _u1, a
 # مرده که هیچ‌کس نمی‌داند مالِ کیست
 _u2 = app._avatar_save(7, 11, _b64a.b64encode(_PNG_A).decode())
 _left = sorted(p.name for p in app.AVATAR_DIR.glob("7_11_*"))
-check("و فقط یکی می‌ماند", len(_left) == 1, "، ".join(_left))
-check("و نشانی عوض می‌شود", _u2 != _u1, f"{_u1} → {_u2}")
+check("بایت‌های عکس روی دیسک نوشته نمی‌شود", len(_left) == 0, "، ".join(_left))
+check("تلاش دوباره همان عکس را دوباره آپلود نمی‌کند", _u2 == _u1, f"{_u1} → {_u2}")
 
 # فرمت
 for _name, _blob in (("SVG", b'<svg xmlns="http://www.w3.org/2000/svg"></svg>'),
@@ -3541,7 +3569,7 @@ _BAD.append(".." + chr(92) + "hidden.png")
 try:
     for _b in _BAD:
         try:
-            app.public_avatar(_b)
+            app.public_avatar(_b, None)
             check("مسیرِ خطرناک رد می‌شود (%s)" % _b[:14], False, "سرو شد")
         except app.HTTPException as _e:
             check("مسیرِ خطرناک رد می‌شود (%s)" % _b[:14],
@@ -3581,13 +3609,14 @@ _PNG_R = _b64r.b64decode(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk"
     "+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==")
 
+with _media_test.db.conn() as _mc:
+    _mc.execute("INSERT INTO orders(id,tenant_id,user_id,amount,base_amount,kind) VALUES(4242,1,1,10,10,'new')")
 _ref = app._receipt_save(4242, _PNG_R)
-check("رسید روی دیسک ذخیره می‌شود", bool(_ref), str(_ref))
-check("و ارجاعش «محلی» علامت می‌خورد",
-      str(_ref).startswith("local:"), str(_ref))
+check("رسید پس از نگهداری تایید می‌شود", bool(_ref), str(_ref))
+check("و ارجاع تلگرامی دارد", str(_ref).startswith("media:"), str(_ref))
 
-_p = app._receipt_local(_ref)
-check("و دوباره پیدا می‌شود", _p is not None and _p.exists(), str(_p))
+_p = _media_test.asset(_ref, tid=1)
+check("و دوباره پیدا می‌شود", _p and _p['state'] == 'ready' and _media_test.read(_ref, 1) == _PNG_R, str(_p and _p['state']))
 
 # چیزی که تصویر نیست، ذخیره نمی‌شود
 check("متن به‌جای تصویر رد می‌شود",
@@ -3644,7 +3673,8 @@ _H2 = io.open(os.path.join(str(ROOT), "bot", "handlers.py"),
 _rs = _H2[_H2.find("def receipt_submit("):]
 _rs = _rs[:_rs.find("def _receipt_caption")]
 check("هسته ارجاع محلی را جایگزین نمی‌کند",
-      "if uploaded and not rfile:" in _rs,
+      not any(isinstance(n, ast.Assign) and any(isinstance(t, ast.Name) and t.id == 'rfile'
+              for t in n.targets) for n in ast.walk(ast.parse(_rs))),
       "وگرنه همان وابستگی برمی‌گردد که باعث گم‌شدن رسید شده بود")
 
 
@@ -3702,7 +3732,7 @@ if PRO:        # the reseller portal is Pro (backend/pro/resellers.py)
     # فقط یک فایل باید بماند، نه سه‌تا با پسوندهای مختلف
     _put(_PNG)
     _files = sorted(p.name for p in app.LOGO_DIR.glob(f"{tid_root}.*"))
-    check("فقط یک فایل برای هر مستاجر می‌ماند", len(_files) == 1, "، ".join(_files))
+    check("بایت‌های لوگو روی دیسک نوشته نمی‌شود", len(_files) == 0, "، ".join(_files))
 
     # سرو
     _resp = app.public_logo(tid_root)

@@ -204,12 +204,12 @@ spec = importlib.util.spec_from_file_location(
 src = open(os.path.join(ROOT, "bot", "run.py"), encoding="utf-8").read()
 
 check("استخر نخ در حلقه هست", "ThreadPoolExecutor" in src)
-check("قفل هر چت هست", "chat_lock" in src)
+check("هر چت فقط یک پردازشگر دارد", "self.active.add(cid)" in src)
 check("Bot بیرون حلقه ساخته می‌شود",
       "if tg is None or tg.token" in src)
 check("اندازه‌ی استخر قابل تنظیم است", "BOT_POOL_SIZE" in src)
 check("dispatch مستقیم در حلقه صدا زده نمی‌شود",
-      "pool.submit(handle" in src and
+      "self.pool.submit(self.drain" in src and
       "\n                    handlers.dispatch(tenant, tg, up)" not in src)
 
 # ═══════════════════════════════════════════════════════════

@@ -52,6 +52,7 @@ def head(t):
 
 
 import backup as B                                         # noqa: E402
+from core import channel_photo_dir
 
 DBS = {n: DATA / n for n in B.DBS}
 
@@ -91,6 +92,9 @@ make_db(DATA / "tunnels.db", ["tunnel fi"])
 (DATA / "chat" / "7" / "m1.jpg").write_bytes(b"\xff\xd8chat")
 (DATA / "logos").mkdir()
 (DATA / "logos" / "shop.png").write_bytes(b"\x89PNGlogo")
+os.environ.pop("CHANNEL_DIR", None)
+channel_photo_dir().mkdir()
+(channel_photo_dir() / "post.png").write_bytes(b"\x89PNGchannel")
 # things that must stay out
 (DATA / "bot-before-restore-20260101.db").write_bytes(b"old")
 (DATA / "config.backup.20260101.json").write_text("{}", encoding="utf-8")
@@ -108,6 +112,8 @@ check("settings, admin path and license are in",
       {"config.json", "auth.json", "admin_path.json", "license_state.json"} <= names)
 check("receipts, chat photos and logos, with their folders",
       {"receipts/o12.jpg", "chat/7/m1.jpg", "logos/shop.png"} <= names)
+check("the channel writer's default directory is backed up",
+      (channel_photo_dir() / "post.png").relative_to(DATA).as_posix() in names)
 check("old backups and safety copies stay out",
       not any(n.startswith("backups") or "before-restore" in n or "config.backup" in n
               for n in names), sorted(names))

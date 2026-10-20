@@ -7,10 +7,13 @@
 
 set -o pipefail
 
+CENTRAL=false
 if [ "${1:-}" = "--prepare" ] && [ "$#" -eq 1 ]; then
   exec bash "$(dirname "${BASH_SOURCE[0]}")/scripts/install-prepare.sh"
+elif [ "${1:-}" = "--central" ] && [ "$#" -eq 1 ]; then
+  CENTRAL=true
 elif [ "$#" -ne 0 ]; then
-  echo "Usage: bash install.sh [--prepare]" >&2
+  echo "Usage: bash install.sh [--prepare|--central]" >&2
   exit 2
 fi
 
@@ -80,6 +83,7 @@ echo -e "    ${C_LBLUE}3${C_RESET})  Skip  ${C_DIM}(HTTP only)${C_RESET}"
 echo ""
 read -p "$(echo -e "  ${C_WHITE}Choice [1-3]${C_RESET}: ")" SSL_CHOICE
 SSL_CHOICE=${SSL_CHOICE:-1}
+[ "$CENTRAL" = true ] && [[ ! "$SSL_CHOICE" =~ ^[12]$ ]] && die "Central installation requires HTTPS; select Let's Encrypt or Cloudflare Origin."
 
 EMAIL=""
 if [ "$SSL_CHOICE" = "1" ]; then
@@ -90,6 +94,7 @@ fi
 
 echo ""
 read -p "$(echo -e "  ${C_WHITE}Restrict panel to your IP?${C_RESET} ${C_DIM}(empty = allow all)${C_RESET}: ")" ALLOW_IP
+[ "$CENTRAL" = true ] && [ -n "$ALLOW_IP" ] && die "Central installation needs agent access; leave the IP restriction empty. Admin APIs still require authentication."
 
 echo ""
 echo -e "${C_GRAY}  ─────────────────────────────────────────────────────${C_RESET}"
@@ -100,6 +105,7 @@ SSL_LABEL="None (HTTP)"
 echo -e "  ${C_DIM}SSL method   :${C_RESET} ${C_WHITE}$SSL_LABEL${C_RESET}"
 echo -e "  ${C_DIM}IP restrict  :${C_RESET} ${C_WHITE}${ALLOW_IP:-none}${C_RESET}"
 echo -e "  ${C_DIM}Install path :${C_RESET} ${C_WHITE}$INSTALL_DIR${C_RESET}"
+[ "$CENTRAL" = true ] && info "Central mode: no local 3x-ui required; enroll the remote agent from Bot > 3x-ui server connection."
 echo -e "${C_GRAY}  ─────────────────────────────────────────────────────${C_RESET}"
 echo ""
 read -p "$(echo -e "  ${C_WHITE}Proceed? [y/N]${C_RESET}: ")" CONFIRM
@@ -214,6 +220,10 @@ python3 -m venv venv > /dev/null 2>&1 || die "Failed to create virtualenv"
 ok "Python environment ready"
 
 # ═══════════════════ STEP 5 — Template ═══════════════════
+SUBPAGE_HTML="$INSTALL_DIR/sub-page-index.html"
+XUI_ENV=""
+THEME_SET=false
+if [ "$CENTRAL" = false ]; then
 step "Installing subscription template"
 PANEL_USER=$(ps -o user= -C x-ui 2>/dev/null | head -1 | tr -d ' ')
 [ -z "$PANEL_USER" ] && PANEL_USER="root"
@@ -261,6 +271,11 @@ PYEOF
   [ "$RESULT" = "OK" ] && { ok "Template path registered in x-ui database"; THEME_SET=true; } \
                        || warn "Could not auto-register path — set it manually in x-ui"
 fi
+SUBPAGE_HTML="$SUBPAGE_DIR/index.html"
+XUI_ENV='Environment="XUI_DB_PATH=/etc/x-ui/x-ui.db"'
+else
+  info "Central mode: skipping local XUI template and database changes"
+fi
 
 # ═══════════════════ STEP 6 — Service ═══════════════════
 step "Creating system service"
@@ -277,9 +292,9 @@ Environment="ALLOWED_ORIGIN=*"
 Environment="CONFIG_PATH=$INSTALL_DIR/data/config.json"
 Environment="AUTH_PATH=$INSTALL_DIR/data/auth.json"
 Environment="PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
-Environment="XUI_DB_PATH=/etc/x-ui/x-ui.db"
+$XUI_ENV
 Environment="TUNNEL_DB_PATH=$INSTALL_DIR/data/tunnels.db"
-Environment="SUBPAGE_HTML_PATH=$SUBPAGE_DIR/index.html"
+Environment="SUBPAGE_HTML_PATH=$SUBPAGE_HTML"
 ExecStart=$INSTALL_DIR/backend/venv/bin/uvicorn app:app --host 127.0.0.1 --port 8100
 Restart=always
 RestartSec=5
@@ -453,6 +468,7 @@ EOF
     ;;
   *) warn "SSL skipped — HTTP only" ;;
 esac
+[ "$CENTRAL" = true ] && [ "$SSL_READY" != true ] && die "Central installation requires working HTTPS. Fix the certificate before enrolling agents."
 
 # ═══════════════════ STEP 9 — nginx ═══════════════════
 step "Configuring nginx"
@@ -560,7 +576,10 @@ nginx -t > /dev/null 2>&1 || die "nginx config test failed. Run:  nginx -t"
 # actually configured above, while the admin panel uses same-origin requests.
 TEMPLATE_PROTO="http"; [ "$SSL_READY" = true ] && TEMPLATE_PROTO="https"
 sed -i "s|const SUBPAGE_CONFIG_API = \"[^\"]*\"|const SUBPAGE_CONFIG_API = \"$TEMPLATE_PROTO://$PANEL_DOMAIN\"|" \
-  "$INSTALL_DIR/sub-page-index.html" "$SUBPAGE_DIR/index.html"
+  "$INSTALL_DIR/sub-page-index.html"
+if [ "${CENTRAL:-false}" = false ]; then
+  cp "$INSTALL_DIR/sub-page-index.html" "${SUBPAGE_HTML:-$SUBPAGE_DIR/index.html}"
+fi
 systemctl reload nginx
 ok "nginx configured"
 [ -n "$ALLOW_IP" ] && ok "Access restricted to $ALLOW_IP"
@@ -636,7 +655,7 @@ if [ ! -e "$INSTALL_DIR/.nexora-update.conf" ] && [ ! -f "$INSTALL_DIR/.github" 
   fi
 fi
 
-if systemctl is-active --quiet x-ui 2>/dev/null; then
+if [ "$CENTRAL" = false ] && systemctl is-active --quiet x-ui 2>/dev/null; then
   x-ui restart > /dev/null 2>&1 || systemctl restart x-ui > /dev/null 2>&1
   ok "x-ui panel restarted"
 fi
@@ -657,11 +676,16 @@ done
 ADMIN_P=$(sed -n 's/.*"path": *"\([a-z0-9_-]*\)".*/\1/p' "$INSTALL_DIR/data/admin_path.json" 2>/dev/null)
 echo -e "  ${C_DIM}Admin panel  :${C_RESET} ${C_LBLUE}${PROTO}://${PANEL_DOMAIN}/${ADMIN_P}${ADMIN_P:+/}${C_RESET}"
 [ -z "$ADMIN_P" ] && echo -e "  ${C_YELLOW}  address not ready yet — run: nexora url${C_RESET}"
-echo -e "  ${C_DIM}Template dir :${C_RESET} ${C_WHITE}${SUBPAGE_DIR}/${C_RESET}"
+if [ "$CENTRAL" = false ]; then
+  echo -e "  ${C_DIM}Template dir :${C_RESET} ${C_WHITE}${SUBPAGE_DIR}/${C_RESET}"
+else
+  info "Next: register the owner bot, then open Bot > 3x-ui server connection."
+  info "Select the central host region, enroll the agent on the existing XUI host, refresh, then save Remote mode."
+fi
 echo -e "  ${C_DIM}Version      :${C_RESET} ${C_WHITE}${VERSION}${C_RESET}"
 echo ""
 
-if [ "$THEME_SET" = false ]; then
+if [ "$CENTRAL" = false ] && [ "$THEME_SET" = false ]; then
   echo -e "  ${C_YELLOW}${C_BOLD}ACTION REQUIRED${C_RESET}"
   echo -e "  ${C_DIM}x-ui panel → Settings → Subscription → Sub Theme Directory${C_RESET}"
   echo -e "  ${C_DIM}Set to:${C_RESET} ${C_WHITE}${SUBPAGE_DIR}/${C_RESET}   ${C_DIM}then run:${C_RESET} ${C_WHITE}x-ui restart${C_RESET}"

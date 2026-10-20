@@ -1,6 +1,6 @@
 """
 Every API route declared in the source, read statically: the `@app.<method>`
-decorators in backend/app.py and backend/pro/*.py, and the `ROUTES` tables
+decorators in backend/*.py and backend/pro/*.py, and the `ROUTES` tables
 of backend/pro/*.py.
 
 tests/test-seams.py and scripts/check-api-contract.py both read routes through
@@ -11,16 +11,17 @@ see was reported as a panel call to nowhere
 import re
 from pathlib import Path
 
-_CORE = re.compile(r'@app\.(get|post|put|delete|patch)\(\s*"([^"]+)"')
+_CORE = re.compile(r'''@app\.(get|post|put|delete|patch)\(\s*["']([^"']+)["']''')
 _PRO = re.compile(r'\(\s*"(GET|POST|PUT|DELETE|PATCH)",\s*"(/api[^"]+)"')
 
 
 def route_decls(root):
     """[(method, path, file)] for every declared route; method is lower case."""
     root = Path(root)
-    app = root / "backend" / "app.py"
-    out = [(m.group(1), m.group(2), "backend/app.py")
-           for m in _CORE.finditer(app.read_text(encoding="utf-8"))]
+    out = []
+    for app in sorted((root / 'backend').glob('*.py')):
+        out += [(m.group(1), m.group(2), f"backend/{app.name}")
+                for m in _CORE.finditer(app.read_text(encoding="utf-8"))]
     pro = root / "backend" / "pro"
     for f in sorted(pro.glob("*.py")) if pro.is_dir() else []:
         text = f.read_text(encoding="utf-8")

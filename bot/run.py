@@ -13,6 +13,7 @@
     BOT_LOG_LEVEL INFO | DEBUG
 """
 import contextlib
+import json
 import logging
 import os
 import secrets
@@ -148,6 +149,166 @@ def chat_id_of(update):
     return cid
 
 
+class UpdateDispatcher:
+    """Bound durable backlog per chat; only runnable chats occupy executor slots."""
+    def __init__(self, tenant_id, bot, limit=64):
+        from bot.media import bot_key
+        self.tid, self.bot = tenant_id, bot
+        self.identity = bot_key({'bot_token': bot.token})
+        self.limit = limit
+        self.pool = ThreadPoolExecutor(max_workers=POOL_SIZE)
+        self.guard = threading.RLock()
+        self.active = set()
+        self.tenant = None
+        self.closed = False
+        with db.conn() as cx:
+            cx.execute('INSERT OR IGNORE INTO bot_poll_state(tenant_id,bot_identity,last_received) VALUES(?,?,?)',
+                       (self.tid, self.identity, time.time()))
+            state = cx.execute('SELECT epoch FROM bot_poll_state WHERE tenant_id=? AND bot_identity=?',
+                               (self.tid, self.identity)).fetchone()
+            self.key = self.identity + (f"#{state['epoch']}" if state['epoch'] else '')
+            cx.execute("UPDATE bot_updates SET status='interrupted',error=? "
+                       "WHERE tenant_id=? AND bot_key=? AND status='running'",
+                       ("Restart during dispatch; review effects before retry", self.tid, self.key))
+        self.prune()
+
+    def poll_offset(self, offset):
+        # Telegram may randomize update IDs after a week idle. Old claims belong to their epoch.
+        with self.guard, db.conn() as cx:
+            cx.execute('BEGIN IMMEDIATE')
+            state = cx.execute('SELECT epoch,last_received FROM bot_poll_state WHERE tenant_id=? AND bot_identity=?',
+                               (self.tid, self.identity)).fetchone()
+            pending = cx.execute("SELECT 1 FROM bot_updates WHERE tenant_id=? AND bot_key=? AND status='pending' LIMIT 1",
+                                 (self.tid, self.key)).fetchone()
+            now = time.time()
+            if now - state['last_received'] >= 7 * 86400 and not self.active and not pending:
+                epoch = state['epoch'] + 1
+                cx.execute('UPDATE bot_poll_state SET epoch=?,last_received=? WHERE tenant_id=? AND bot_identity=?',
+                           (epoch, now, self.tid, self.identity))
+                cx.execute("DELETE FROM bot_updates WHERE tenant_id=? AND bot_key=? AND status='done'", (self.tid, self.key))
+                cx.execute('DELETE FROM bot_watermarks WHERE tenant_id=? AND bot_key=?', (self.tid, self.key))
+                self.key = f'{self.identity}#{epoch}'
+                return 0
+        return offset
+
+    def prune(self):
+        with db.conn() as cx:
+            cutoff = cx.execute("SELECT update_id FROM bot_updates WHERE tenant_id=? AND bot_key=? "
+                "AND status='done' ORDER BY update_id DESC LIMIT 1 OFFSET 9999",
+                (self.tid, self.key)).fetchone()
+            if cutoff:
+                cx.execute('INSERT INTO bot_watermarks VALUES(?,?,?) ON CONFLICT(tenant_id,bot_key) '
+                    'DO UPDATE SET floor=MAX(floor,excluded.floor)', (self.tid, self.key, cutoff['update_id'] - 1))
+                cx.execute("DELETE FROM bot_updates WHERE tenant_id=? AND bot_key=? AND update_id<? "
+                    "AND status='done'", (self.tid, self.key, cutoff['update_id']))
+
+    def admit(self, tenant, update):
+        if (not isinstance(update, dict) or type(update.get('update_id')) is not int
+                or update['update_id'] < 0):
+            log.warning("tenant %s: invalid update envelope", self.tid)
+            return True
+        try:
+            cid = chat_id_of(update)
+            if type(cid) is not int or not cid:
+                raise ValueError("missing chat")
+            payload = json.dumps(update)
+            if len(payload.encode()) > 256 * 1024:
+                raise ValueError("oversized update")
+        except (AttributeError, TypeError, ValueError):
+            log.warning("tenant %s: invalid update %s", self.tid, update['update_id'])
+            return True
+        with self.guard:
+            self.tenant = tenant
+            with db.conn() as cx:
+                cx.execute('BEGIN IMMEDIATE')
+                prior = cx.execute('SELECT status FROM bot_updates WHERE tenant_id=? AND bot_key=? '
+                    'AND update_id=?', (self.tid, self.key, update['update_id'])).fetchone()
+                if not prior:
+                    floor = cx.execute('SELECT floor FROM bot_watermarks WHERE tenant_id=? AND bot_key=?',
+                                       (self.tid, self.key)).fetchone()
+                    if floor and update['update_id'] <= floor['floor']:
+                        return True
+                    counts = cx.execute("SELECT COUNT(*) AS n, SUM(chat_id=?) AS chat_n FROM bot_updates "
+                        "WHERE tenant_id=? AND bot_key=? AND status IN ('pending','running')",
+                        (cid, self.tid, self.key)).fetchone()
+                    if counts['n'] >= self.limit * POOL_SIZE or (counts['chat_n'] or 0) >= self.limit:
+                        return False
+                    cx.execute('INSERT INTO bot_updates(tenant_id,bot_key,update_id,payload,chat_id) '
+                        'VALUES(?,?,?,?,?)', (self.tid, self.key, update['update_id'], payload, cid))
+                    cx.execute('UPDATE bot_poll_state SET last_received=? WHERE tenant_id=? AND bot_identity=?',
+                               (time.time(), self.tid, self.identity))
+            self.pump()
+        return True
+
+    def pump(self):
+        with self.guard:
+            if self.closed:
+                return
+            with db.conn() as cx:
+                # A failed outcome write can leave a running claim after its worker exits.
+                running = cx.execute("SELECT update_id,chat_id FROM bot_updates WHERE tenant_id=? AND bot_key=? AND status='running'",
+                                     (self.tid, self.key)).fetchall()
+                for row in running:
+                    if row['chat_id'] not in self.active:
+                        cx.execute("UPDATE bot_updates SET status='interrupted',error=? WHERE tenant_id=? AND bot_key=? AND update_id=? AND status='running'",
+                                   ('Dispatch outcome unavailable; review before retry', self.tid, self.key, row['update_id']))
+                rows = cx.execute("SELECT chat_id,MIN(update_id) AS first_id FROM bot_updates "
+                    "WHERE tenant_id=? AND bot_key=? AND status='pending' GROUP BY chat_id "
+                    "ORDER BY first_id LIMIT ?", (self.tid, self.key, POOL_SIZE * self.limit)).fetchall()
+            for row in rows:
+                cid = row['chat_id']
+                if cid in self.active or len(self.active) >= POOL_SIZE:
+                    continue
+                self.active.add(cid)
+                try:
+                    self.pool.submit(self.drain, cid)
+                except Exception:
+                    self.active.remove(cid)
+                    log.exception('tenant %s: dispatch submission rejected; update remains pending', self.tid)
+
+    def drain(self, cid):
+        try:
+            while True:
+                with db.conn() as cx:
+                    cx.execute('BEGIN IMMEDIATE')
+                    row = cx.execute("SELECT update_id,payload FROM bot_updates WHERE tenant_id=? "
+                        "AND bot_key=? AND chat_id=? AND status='pending' ORDER BY update_id LIMIT 1",
+                        (self.tid, self.key, cid)).fetchone()
+                    if not row:
+                        return
+                    uid = row['update_id']
+                    cx.execute("UPDATE bot_updates SET status='running' WHERE tenant_id=? AND bot_key=? "
+                        "AND update_id=?", (self.tid, self.key, uid))
+                try:
+                    if handlers.dispatch(self.tenant, self.bot, json.loads(row['payload'])) is False:
+                        raise RuntimeError('Dispatch reported failure')
+                except Exception as exc:
+                    log.exception('tenant %s: update %s interrupted', self.tid, uid)
+                    with db.conn() as cx:
+                        cx.execute("UPDATE bot_updates SET status='interrupted',error=? WHERE "
+                            "tenant_id=? AND bot_key=? AND update_id=?",
+                            (type(exc).__name__, self.tid, self.key, uid))
+                else:
+                    with db.conn() as cx:
+                        cx.execute("UPDATE bot_updates SET status='done',payload='{}' WHERE "
+                            "tenant_id=? AND bot_key=? AND update_id=?", (self.tid, self.key, uid))
+                self.prune()
+        except Exception:
+            log.exception('tenant %s: dispatch database failure; pending work remains durable', self.tid)
+        finally:
+            with self.guard:
+                self.active.discard(cid)
+
+    def recover(self, tenant):
+        self.tenant = tenant
+        self.pump()
+
+    def close(self):
+        with self.guard:
+            self.closed = True
+        self.pool.shutdown(wait=True)
+
+
 # ═══════════════════════════════════════════════════════════
 #  حلقه‌ی هر مستاجر
 # ═══════════════════════════════════════════════════════════
@@ -209,23 +370,15 @@ def tenant_loop(tenant_id: int):
     # حالا هر آپدیت به استخر می‌رود، ولی پیام‌های یک کاربر با قفلِ
     # همان چت سریالی می‌مانند — وگرنه دو پیام پشت‌سرهم یک نفر
     # می‌توانستند جابه‌جا اجرا شوند و وضعیت گفت‌وگو خراب شود.
-    pool = ThreadPoolExecutor(max_workers=POOL_SIZE,
-                              thread_name_prefix=f"{name}-w")
-    chat_locks = ChatLocks()
-
-    def handle(tenant_snapshot, bot, update):
-        try:
-            with chat_locks.hold(chat_id_of(update)):
-                handlers.dispatch(tenant_snapshot, bot, update)
-        except Exception:
-            log.exception("%s: خطا در پردازش آپدیت %s",
-                          name, update.get("update_id"))
+    dispatcher = None
 
     while not _stop.is_set():
         try:
             tenant = db.get_tenant(tenant_id)
             if not tenant or not tenant["is_active"] or not tenant["bot_token"]:
                 log.info("%s: غیرفعال یا بدون توکن — خروج", name)
+                if dispatcher:
+                    dispatcher.close()
                 return
 
             # Bot را یک‌بار می‌سازیم و نگه می‌داریم.
@@ -236,7 +389,12 @@ def tenant_loop(tenant_id: int):
             # تلگرام، همین تنهایی چند صد میلی‌ثانیه به هر پیام
             # اضافه می‌کرد.
             if tg is None or tg.token != tenant["bot_token"]:
+                if dispatcher:
+                    dispatcher.close()
                 tg = Bot(tenant["bot_token"])
+                dispatcher = UpdateDispatcher(tenant_id, tg)
+                dispatcher.recover(tenant)
+                offset = 0
                 _sync_menu_button(tenant, tg, name)
                 # the admin group's topics, all at once (handlers.TOPICS)
                 try:
@@ -244,14 +402,19 @@ def tenant_loop(tenant_id: int):
                 except Exception as e:
                     log.warning("%s: admin group topics not made: %s", name, e)
 
+            offset = dispatcher.poll_offset(offset)
             updates = tg.updates(offset=offset, timeout=25)
             backoff = 1
 
             for up in updates:
-                offset = up["update_id"] + 1
                 if _stop.is_set():
                     break
-                pool.submit(handle, tenant, tg, up)
+                accepted = dispatcher.admit(tenant, up)
+                if not accepted:
+                    break
+                if isinstance(up, dict) and type(up.get('update_id')) is int:
+                    offset = max(offset, up['update_id'] + 1)
+            dispatcher.pump()
 
         except TelegramError as e:
             msg = str(e)
@@ -268,6 +431,9 @@ def tenant_loop(tenant_id: int):
             log.exception("%s: خطای غیرمنتظره", name)
             _stop.wait(min(backoff, 60))
             backoff = min(backoff * 2, 60)
+
+    if dispatcher:
+        dispatcher.close()
 
 
 def sync_workers():
@@ -562,6 +728,8 @@ def run_auto_renew():
             """SELECT s.*, u.tg_id, u.balance FROM subscriptions s
                JOIN users u ON u.id = s.user_id
                WHERE s.tenant_id=? AND s.is_active=1 AND s.auto_renew=1
+                 AND NOT EXISTS (SELECT 1 FROM orders o WHERE o.tenant_id=s.tenant_id
+                     AND o.renew_sub_id=s.id AND o.status='remote_review')
                  AND (s.renew_retry_at IS NULL
                       OR s.renew_retry_at <= datetime('now'))""",
             (t["id"],)
@@ -638,6 +806,11 @@ def process_panel_approvals():
             tg = Bot(tenant["bot_token"])
             ctx = handlers.Ctx(tg, tenant)
 
+            current = ctx.db.get_order(oid)
+            if current and current.get('credited_at') is not None:
+                ctx.db.close_order(oid, 'approved', from_status=r['status'])
+                continue
+
             if r["status"] == "panel_reject":
                 done = handlers.do_reject(ctx, oid, 0,
                                           r["admin_note"] or "رسید تایید نشد.")
@@ -669,7 +842,7 @@ def process_panel_approvals():
                 with db.conn() as cx:
                     cx.execute(
                         "UPDATE orders SET status='awaiting', admin_note=? "
-                        "WHERE id=? AND " + db.UNDELIVERED,
+                        "WHERE id=? AND status <> 'remote_review' AND " + db.UNDELIVERED,
                         (f"تحویل ناموفق: {str(note)[:120]}", oid))
         except Exception as e:
             log.error("خطا در تحویل سفارش %s: %s", oid, e)
@@ -679,7 +852,7 @@ def process_panel_approvals():
                 with db.conn() as cx:
                     cx.execute(
                         "UPDATE orders SET status='awaiting', admin_note=? "
-                        "WHERE id=? AND " + db.UNDELIVERED,
+                        "WHERE id=? AND status <> 'remote_review' AND " + db.UNDELIVERED,
                         (f"خطای تحویل: {str(e)[:120]}", oid))
             except Exception as e2:
                 # اگر برگرداندن هم نشد، سفارش «تاییدشده» می‌ماند بی‌آنکه
@@ -729,6 +902,21 @@ def trial_winback():
 #: weeks late, when the license comes back, is worse than not sending it; a post
 #: that silently stays queued forever is worse than both.
 LOCKED_POST_ERROR = "Pro در زمانِ ارسالِ این پست قفل بود؛ پست نرفت"
+_channel_delivery_lock = threading.Lock()
+
+
+def channel_delivery_tick():
+    """One delivery worker, no queued ticks: Telegram latency cannot stall payments."""
+    if not _channel_delivery_lock.acquire(blocking=False):
+        return
+    def work():
+        try:
+            send_due_posts()
+        except Exception:
+            log.exception('channel delivery worker failed')
+        finally:
+            _channel_delivery_lock.release()
+    threading.Thread(target=work, name='channel-delivery', daemon=True).start()
 
 
 def send_due_posts():
@@ -740,6 +928,7 @@ def send_due_posts():
     """
     chan = handlers.pro("channel")
     if chan and handlers.pro_allowed("channel"):
+        chan.automation_tick(db, Bot, handlers)
         chan.send_due_posts(db, Bot, handlers.Ctx, _event)
         return
     expire_locked_posts()
@@ -802,7 +991,7 @@ def scheduler_loop():
             # پستِ زمان‌بندی‌شده نباید ساعت‌ها دیر برود؛ دقیقه‌ای
             # یک‌بار کافی است و تقریباً هیچ هزینه‌ای ندارد.
             if now - last.get("posts", 0) > 60:
-                send_due_posts()
+                channel_delivery_tick()
                 sync_menu_buttons_on_license_change()
                 sms_sweep()
                 last["posts"] = now
@@ -879,6 +1068,11 @@ def main():
     signal.signal(signal.SIGINT, shutdown)
 
     db.init_db()
+    with db.conn() as cx:
+        cx.execute("UPDATE channel_runs SET state='interrupted',error='Generation interrupted; no automatic retry' "
+                   "WHERE state='generating'")
+        cx.execute("UPDATE channel_posts SET status='unknown',error='Send interrupted; review the channel before retry' "
+                   "WHERE status IN ('draft','queued','failed') AND claimed_at IS NOT NULL")
     log.info("دیتابیس آماده: %s", db.DB_PATH)
 
     tenants = [t for t in db.all_tenants(active_only=True) if t["bot_token"]]

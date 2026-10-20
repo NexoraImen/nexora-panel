@@ -17,6 +17,7 @@ import { BillingSettings } from "./sections/billing-settings";
 import { BotBackupSection } from "./sections/bot/backup";
 import { BotEventsSection } from "./sections/bot/events";
 import { BotSection } from "./sections/bot/connection";
+import { RemoteXuiSection } from "./sections/remote-xui";
 import { BotInboundsSection } from "./sections/bot/inbounds";
 import { BotOrdersSection } from "./sections/bot/orders";
 import { BotInboxSection } from "./sections/bot/inbox";
@@ -503,6 +504,7 @@ export default function App() {
           {active === "faq" && <FaqSection config={config} setConfig={setConfig} requestDelete={setConfirmTarget} />}
           {active === "resellers" && <ResellersSection config={config} setConfig={setConfig} requestDelete={setConfirmTarget} password={password} />}
           {active === "bot" && <BotSection password={password} dirty={dirty} />}
+          {active === "bot-source" && <RemoteXuiSection password={password} />}
           {active === "bot-inbounds" && <BotInboundsSection password={password} />}
           {active === "bot-plans" && <BotPlansSection password={password} />}
           {active === "bot-orders" && <BotOrdersSection password={password} />}

@@ -143,17 +143,58 @@ b = bot_with([_rq.ConnectionError("https://api.telegram.org/botTEST_SECRET/sendM
 SLEPT.clear()
 err = None
 try:
-    b.call("sendMessage", chat_id=1)
+    b.call("getUpdates", timeout=1)
 except T.TelegramError as e:
     err = e
 check("خطای شبکه گزارش می‌شود", err and "شبکه" in str(err), str(err)[:60])
 check("سه بار تلاش شده", b._session.calls == 3, f"{b._session.calls} درخواست")
 check("Network error never exposes the bot token", err and "TEST_SECRET" not in str(err))
 
-b = bot_with([_rq.ConnectionError("قطع"), OK])
+b = bot_with([_rq.ConnectTimeout("قطع"), OK])
 check("و یک قطعی گذرا پیام را نمی‌اندازد",
       b.call("sendMessage", chat_id=1) == {"message_id": 1})
 
+
+for method in ("sendMessage", "sendPhoto", "sendDocument", "copyMessage", "forwardMessage"):
+    b = bot_with([_rq.ReadTimeout("response lost"), OK])
+    SLEPT.clear()
+    try:
+        b.call(method, chat_id=1)
+        check(f"{method}: ambiguous delivery is reported", False)
+    except T.TelegramError:
+        check(f"{method}: lost response does not replay delivery", b._session.calls == 1 and not SLEPT)
+
+
+head('Streaming download enforces actual bytes, independent of metadata')
+class StreamResponse:
+    def __init__(self, chunks):
+        self.chunks, self.consumed, self.closed = chunks, 0, False
+    def __enter__(self):
+        return self
+    def __exit__(self, *args):
+        self.closed = True
+    def raise_for_status(self):
+        pass
+    def iter_content(self, chunk_size):
+        for chunk in self.chunks:
+            self.consumed += 1
+            yield chunk
+for metadata in ({}, {'file_size': 1}):
+    b = bot_with([{'ok': True, 'result': {'file_path': 'photos/example.png', **metadata}}])
+    response = StreamResponse([b'1234', b'5678', b'never-read'])
+    def get_stream(url, **kwargs):
+        assert kwargs['stream'] is True
+        return response
+    b._session.get = get_stream
+    try:
+        b.file_bytes('file', limit=5)
+        check('Streaming overflow rejected', False)
+    except T.TelegramError:
+        check('Overflow stops before consuming remaining chunks', response.consumed == 2 and response.closed)
+b = bot_with([{'ok': True, 'result': {'file_path': 'photos/example.png'}}])
+response = StreamResponse([b'12', b'345'])
+b._session.get = get_stream
+check('Missing size permits bounded valid content', b.file_bytes('file', limit=5) == b'12345' and response.closed)
 
 print(f"\n{D}{'─' * 50}{X}")
 color = G if not _fail else R

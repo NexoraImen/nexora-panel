@@ -135,6 +135,10 @@ class Bot:
             except requests.RequestException as e:
                 # Network exceptions may embed the bot token in their URL.
                 last_err = type(e).__name__
+                # A lost response may follow a successful send; replaying creates duplicates.
+                if (method.startswith(("send", "forward", "copy"))
+                        and not isinstance(e, requests.ConnectTimeout)):
+                    raise TelegramError("نتیجه ارسال به تلگرام مشخص نیست؛ پاسخ شبکه دریافت نشد") from None
                 net_tries += 1
                 time.sleep(1.5 * (attempt + 1))
 
@@ -263,6 +267,31 @@ class Bot:
             return self.call("sendDocument", chat_id=chat_id, caption=caption,
                              parse_mode="HTML", message_thread_id=topic_id,
                              _files={"document": f})
+
+    def send_doc_bytes(self, chat_id, data, filename="image.bin", topic_id=None):
+        return self.call("sendDocument", chat_id=chat_id,
+                         disable_notification=True, message_thread_id=topic_id,
+                         _files={"document": (filename, bytes(data), "application/octet-stream")})
+
+    def file_bytes(self, file_id, limit=3 * 1024 * 1024):
+        """Resolve on the server and bound streaming; token URLs never reach clients."""
+        info = self.call("getFile", file_id=file_id) or {}
+        path = info.get('file_path')
+        if (not isinstance(path, str) or path.startswith('/') or '..' in path
+                or '\\' in path or ':' in path or info.get('file_size', 0) > limit):
+            raise TelegramError("Telegram file is unavailable or too large")
+        try:
+            with self._session.get(f"https://api.telegram.org/file/bot{self.token}/{path}",
+                                   timeout=self.timeout, stream=True) as response:
+                response.raise_for_status()
+                data = bytearray()
+                for chunk in response.iter_content(65536):
+                    data.extend(chunk)
+                    if len(data) > limit:
+                        raise TelegramError("Telegram file is too large")
+                return bytes(data)
+        except requests.RequestException:
+            raise TelegramError("Telegram file could not be downloaded") from None
 
     def copy(self, chat_id, from_chat_id, message_id, caption=None,
              keyboard=None, topic_id=None):

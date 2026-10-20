@@ -87,7 +87,7 @@ curl(){ printf '%s\\n' "$*" >&2; echo '{"tag_name":"v2.3.9"}'; }
 
     def installer(self):
         block = INSTALL.split('# Enable automatic updates from GitHub\n', 1)[1]
-        block = block.split('\nif systemctl', 1)[0]
+        block = block.split('\nif [ "$CENTRAL" = false ] && systemctl', 1)[0]
         return self.run_shell('INSTALL_DIR="$PWD"\nok(){ echo "OK:$1"; }\n'
                               'warn(){ echo "WARN:$1"; }\n' + block)
 
@@ -109,7 +109,7 @@ curl(){ printf '%s\\n' "$*" >&2; echo '{"tag_name":"v2.3.9"}'; }
 
     def test_installer_reports_write_failure(self):
         # A dangling parent avoids permission-dependent behavior when CI is root.
-        block = INSTALL.split('# Enable automatic updates from GitHub\n', 1)[1].split('\nif systemctl', 1)[0]
+        block = INSTALL.split('# Enable automatic updates from GitHub\n', 1)[1].split('\nif [ "$CENTRAL" = false ] && systemctl', 1)[0]
         result = self.run_shell('INSTALL_DIR="$PWD/missing"\nok(){ echo "OK"; }\n'
                                 'warn(){ echo "WARN"; }\n' + block)
         self.assertIn('WARN', result.stdout)

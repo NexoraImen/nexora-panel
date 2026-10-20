@@ -368,8 +368,8 @@ def license_only(plans):
 
 
 def order_delivered(order):
-    """The Python side of `db.UNDELIVERED`: a config or a license exists."""
-    return bool((order or {}).get("sub_id") or (order or {}).get("license_id"))
+    """The Python side of db.UNDELIVERED includes an atomically credited top-up."""
+    return any((order or {}).get(k) is not None for k in ('sub_id', 'license_id', 'credited_at'))
 
 
 def plan_spec(p):

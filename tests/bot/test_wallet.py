@@ -640,9 +640,53 @@ check("approve_order اول ادعا می‌کند",
 check("و شکست ساخت ادعا را پس می‌دهد",
       "_unclaim(" in SRC,
       "وگرنه سفارشِ شکست‌خورده approved می‌ماند و تلاش دوباره ممکن نیست")
-# Delivered = a config or a Pro license (db.UNDELIVERED; Phase 4).
-check("پس‌دادن فقط وقتی کانفیگ ساخته نشده",
-      '"WHERE tenant_id=? AND id=? AND " + DB.UNDELIVERED' in SRC)
+# Exercise the claim rollback through real orders; extra SQL guards must not break it.
+from types import SimpleNamespace
+from unittest.mock import Mock, patch
+
+_approval_user = new_user(0)
+_approval_ctx = SimpleNamespace(tid=tid, db=d, bot=Mock(), notify_group=Mock())
+for _case in ("failure", "success", "delivered_sub", "delivered_license", "remote_review"):
+    _approval_order = d.create_order(_approval_user["id"], pid, 190000, 190000)
+    _oid = _approval_order["id"]
+    d.exec("UPDATE orders SET status='awaiting' WHERE tenant_id=? AND id=?", (tid, _oid))
+
+    def _approval_result(_ctx, _order_id):
+        if _case in ("success", "delivered_sub"):
+            d.exec("UPDATE orders SET sub_id=777 WHERE tenant_id=? AND id=?", (tid, _order_id))
+        elif _case == "delivered_license":
+            d.exec("UPDATE orders SET license_id='issued-license' WHERE tenant_id=? AND id=?",
+                   (tid, _order_id))
+        elif _case == "remote_review":
+            d.exec("UPDATE orders SET status='remote_review',admin_note='manual check' "
+                   "WHERE tenant_id=? AND id=?", (tid, _order_id))
+        return (_case == "success"), ({"id": 777} if _case == "success" else "provision interrupted")
+
+    with patch.object(H, "provision", side_effect=_approval_result) as _prov, \
+            patch.object(H, "after_paid_order") as _paid, patch.object(H, "deliver") as _deliver:
+        _approved, _note = H.approve_order(_approval_ctx, _oid, 999)
+        _row = d.get_order(_oid)
+        if _case == "failure":
+            check("Definite provisioning failure releases the approval claim",
+                  not _approved and _row["status"] == "awaiting" and not _row["sub_id"])
+            check("Failed approval has no payouts or delivery", not _paid.called and not _deliver.called)
+        elif _case == "success":
+            check("Successful provisioning keeps approval and delivery",
+                  _approved and _row["status"] == "approved" and _row["sub_id"] == 777)
+            check("Successful approval pays and delivers once",
+                  _paid.call_count == 1 and _deliver.call_count == 1)
+        elif _case.startswith("delivered_"):
+            check(f"Claim rollback preserves delivery evidence: {_case}",
+                  not _approved and _row["status"] == "approved")
+        else:
+            check("Uncertain provisioning preserves the review hold and note",
+                  not _approved and _note == H.ORDER_BUSY
+                  and _row["status"] == "remote_review" and _row["admin_note"] == "manual check")
+            check("Held approval has no payouts or delivery", not _paid.called and not _deliver.called)
+            _prov.reset_mock()
+            check("Held order cannot replay provisioning",
+                  H.approve_order(_approval_ctx, _oid, 999) == (False, H.ORDER_BUSY)
+                  and not _prov.called)
 
 
 

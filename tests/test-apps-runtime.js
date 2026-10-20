@@ -225,7 +225,9 @@ async function everyPage() {
     addEventListener() {}, removeEventListener() {},
   });
   w.scrollTo = () => {};
-  w.fetch = (u, opt) => /\/api\/admin\/ping/.test(String(u)) ? pingReply(u, opt) : Promise.resolve({
+  w.fetch = (u, opt) => /\/api\/admin\/ping/.test(String(u)) ? pingReply(u, opt)
+    : /\/api\/admin\/remote-xui$/.test(String(u)) ? Promise.resolve({ ok: true, status: 200,
+      json: () => Promise.resolve({ mode: "local", region: "foreign", selected: null, nodes: [] }) }) : Promise.resolve({
     ok: true, status: 200,
     json: () => Promise.resolve({ ready: true, groups: [], orders: [], users: [],
                                   plans: [], daily: [], buyers: [], downloadApps: {},

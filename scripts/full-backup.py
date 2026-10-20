@@ -25,7 +25,8 @@ import backup as B  # noqa: E402
 def dbs(data):
     return {"bot.db": Path(os.getenv("BOT_DB_PATH", data / "bot.db")),
             "billing.db": Path(os.getenv("BILLING_DB_PATH", data / "billing.db")),
-            "tunnels.db": Path(os.getenv("TUNNEL_DB_PATH", data / "tunnels.db"))}
+            "tunnels.db": Path(os.getenv("TUNNEL_DB_PATH", data / "tunnels.db")),
+            "remote-xui.db": data / "remote-xui.db"}
 
 
 def version():

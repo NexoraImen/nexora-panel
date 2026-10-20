@@ -3,7 +3,8 @@
 ## Requirements
 
 - Ubuntu 20.04+ or Debian 11+, as root
-- 3x-ui already installed on the same server
+- 3x-ui already installed on the same server for a local installation, or on a
+  separate agent host for a central installation
 - A domain (or subdomain) pointing at the server, for the admin panel
 - 1 GB of RAM (the installer adds swap if memory is low)
 
@@ -27,6 +28,81 @@ The installer asks:
 
 It then installs the backend, bot and panel under `/opt/nexora-panel`, sets up nginx and
 systemd services, builds the panel, and installs the `nexora` command.
+
+### Central panel on a separate internet-connected host
+
+On the central host (for example, outside Iran), use:
+
+```bash
+sudo bash install.sh --central
+```
+
+This installs the same panel and bot without requiring local 3x-ui. It skips the
+local subscription template, XUI database edits and XUI restart. Ordinary installs
+and `--prepare` keep their existing behavior; the two flags cannot be combined.
+The central installer requires HTTPS and an empty IP restriction, because the
+remote agent must reach the public agent API. Admin APIs remain authenticated.
+Cloudflare Origin certificates require a proxied hostname with a publicly trusted
+edge certificate; an agent connecting directly cannot trust an Origin certificate.
+If certificate setup fails, central installation stops rather than claiming a
+working HTTP-only agent connection. Packages and partially installed services may
+already exist at that point; fix TLS before continuing setup.
+
+1. Register the owner bot in «اتصال و تنظیمات». Keep sales stopped until the
+   remote source is verified. A new installation starts in local mode until this
+   setup is completed; `--central` does not invent a remote source or credentials.
+2. Open Bot → «اتصال سرور 3x-ui» and choose the central host's actual region.
+3. Enter the remote node's name and region, then create a pairing code. The code
+   expires in ten minutes, works once, and is held only in the current page.
+4. Copy the complete installer command returned by the panel. Run it as root on
+   the host that already runs 3x-ui. It downloads a Python installer with
+   `curl --fail` to a file, then runs `python3` with `--panel` and `--code`.
+   Do not pipe the download directly into a shell or save the secret in docs/logs.
+5. The agent host needs Python 3 with venv support, systemd, and outbound HTTPS to
+   the central panel. The agent uses only the Python standard library; it needs
+   neither pip nor access to PyPI. Install `python3-venv` if needed.
+   The installer prompts for the local loopback XUI URL (including its
+   base path), API token or credentials, and the confirmed local SQLite path.
+   These credentials stay on the agent host. No public XUI listener is needed.
+6. Return to the page and press «تازه‌سازی». Confirm a fresh snapshot, choose
+   central/remote mode and the node, then save. The backend rejects missing,
+   revoked or snapshots older than 90 seconds; an online heartbeat alone is not
+   sufficient. Switching an established accounting source to a different node
+   requires migration and reconciliation, and is rejected by this selector.
+7. Run the existing bot connection/provisioning test before enabling sales.
+   Revoking the selected node stops remote operations until a valid connection
+   is restored. Revocation keeps its history visible in the node list.
+
+For a revoked node or a lost agent token, use «اتصال دوباره» on that existing
+node, including a revoked one. Confirm that it is the same 3x-ui/accounting source:
+the old token is invalidated immediately, while the node ID, snapshot sequence
+and history are preserved. Previous snapshot data is cleared; fresh data is
+required before remote operations resume. The new code and complete command
+appear in the existing pairing area. Run the returned command with `--re-enroll`
+on that same host. With an existing configuration the installer preserves its
+local credential source and command journal; without a configuration it follows
+normal installation. Do not create a different node to replace the same source.
+
+If a command's result is uncertain, the connection page shows its ID, node,
+method, path and creation time, without its request body. Check the actual result
+on the XUI host and reconcile the order and payment before pressing the review
+confirmation. This needs a fresh snapshot and only records your review; it never
+replays the command. The page never acknowledges uncertain commands automatically.
+Orders awaiting delivery/payment reconciliation are listed separately, even after
+an agent reports a terminal command result. Automatic retries and refunds stay
+paused; use the orders page to inspect them. The command-review endpoint cannot
+clear a financial order hold or a command whose terminal result is still pending.
+
+The agent installer does not install Nexora's subscription-page template on the
+remote XUI host. Existing subscription pages remain in place; configuring a
+custom template there is a separate step.
+
+For frontend preview, build the single-bundle harness as described in AGENTS.md,
+then open `/harness.html#/bot-source` (or select the page in the bot menu).
+The fixture includes fresh, stale-but-online, pending, offline and revoked nodes.
+Use `?xui=empty`, `?xui=error`, `?xui=uncertain` or `?xui=orders` to exercise
+empty/error/recovery/order-hold states. Pairing and
+revocation are simulated and never contact a real server.
 
 ### Preparing beside an active 3x-ui server
 

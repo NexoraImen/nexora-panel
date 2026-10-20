@@ -61,7 +61,7 @@ if (WHICH === "admin" && ADMIN_PATH) {
   window.fetch = (input, init) => {
     try {
       const url = typeof input === "string" ? input : (input && input.url) || "";
-      if (/\/api\/(admin|login)(\/|\?|$)/.test(url)) {
+      if (/\/api\/(admin|login|private-media|public\/avatar|public\/chat-photo)(\/|\?|$)/.test(url)) {
         const h = init && init.headers;
         if (h && typeof h.set === "function") {
           h.set("X-Admin-Path", ADMIN_PATH);

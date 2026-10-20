@@ -27,8 +27,8 @@ FORMAT = 1
 #: out of this list is named by the test that compares it with the code.
 FILES = ("config.json", "auth.json", "admin_path.json", "license_state.json",
          "install_id", "usage-history.json", "adminbot.json")
-DIRS = ("logos", "receipts", "avatars", "chat", "aff-receipts")
-DBS = ("bot.db", "billing.db", "tunnels.db")
+DIRS = ("logos", "receipts", "avatars", "chat", "aff-receipts", "channel", "remote-xui")
+DBS = ("bot.db", "billing.db", "tunnels.db", "remote-xui.db")
 
 #: A zip that unpacks to more than this is not ours.
 MAX_UNPACKED = 4 * 1024 ** 3
@@ -77,6 +77,7 @@ def build(data_dir, dbs, version, out_path, host=""):
     """
     data_dir = Path(data_dir)
     entries = []
+    remote_files = set()
     with tempfile.TemporaryDirectory() as tmp, \
             zipfile.ZipFile(out_path, "w", zipfile.ZIP_DEFLATED) as zf:
         def add(src, arc):
@@ -89,6 +90,13 @@ def build(data_dir, dbs, version, out_path, host=""):
                 snap = Path(tmp) / name
                 _db_copy(p, snap)
                 add(snap, name)
+                if name == 'remote-xui.db':
+                    con = sqlite3.connect(snap)
+                    try:
+                        remote_files = {r[0] for r in con.execute(
+                            'SELECT snapshot_path FROM remote_nodes WHERE snapshot_path IS NOT NULL')}
+                    finally:
+                        con.close()
         for name in FILES:
             p = data_dir / name
             if p.is_file():
@@ -99,7 +107,10 @@ def build(data_dir, dbs, version, out_path, host=""):
                 continue
             for f in sorted(root.rglob("*")):
                 if f.is_file():
-                    add(f, f"{d}/{f.relative_to(root).as_posix()}")
+                    arc = f"{d}/{f.relative_to(root).as_posix()}"
+                    if d == 'remote-xui' and arc not in remote_files:
+                        continue
+                    add(f, arc)
         manifest = {"format": FORMAT, "version": version, "host": host,
                     "createdAt": datetime.now().isoformat(timespec="seconds"),
                     "files": entries}

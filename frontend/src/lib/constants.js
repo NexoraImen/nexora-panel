@@ -216,6 +216,7 @@ export const WORKSPACES = {
         title: "پیکربندی",
         items: [
           { key: "bot", label: "اتصال و تنظیمات", icon: Key },
+          { key: "bot-source", label: "اتصال سرور 3x-ui", icon: Server },
           { key: "bot-plans", label: "پلن‌ها و قیمت", icon: Package },
           { key: "bot-inbounds", label: "اینباندها", icon: Network },
           { key: "bot-texts", label: "متن‌ها و یادآوری‌ها", icon: MessageCircle },
